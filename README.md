@@ -23,12 +23,11 @@ The six columns spell the name: **A · E · R · T · S · O**.
 4. **Play.** Players ink the small corner box of each space they get. No
    screens while playing.
 5. **Players scan.** The QR on each sheet contains that board's own code —
-   scanning it with the phone's **built-in camera** opens the site with the
-   board already loaded (the `?scan=` link). Or use *Scan a sheet* in-app:
-   point the camera at the sheet, upload a photo, or type the code under the
-   QR (`K7QM-X2P9`). The player confirms the marks with a tap, and the board
-   links to their email. Marks save right away; **scores stay sealed** until
-   the keys are in.
+   scanning it with the phone's **built-in camera** opens the site straight
+   into the sheet scanner (the `?scan=` link). Point the camera at the sheet
+   and the QR + inked marks are read off the paper; the player confirms them
+   with a tap and the board links to their email. Uploading a photo works
+   too. Marks save right away; **scores stay sealed** until the keys are in.
 6. **Every admin scans their answer key (master key).** After the game, each
    admin scans their own caller sheet (its QR is `?scan=ANSWERS`). Every key
    saves under that admin's email — the *Answer keys* tab shows all of them
@@ -40,14 +39,16 @@ The six columns spell the name: **A · E · R · T · S · O**.
    fully-marked line that includes uncalled items — someone marked squares
    that weren't drawn, or the item is disputed).
 
-If the camera or the automatic mark detection ever struggles, every step has a
-manual fallback — nothing can block a game night.
+If the automatic mark detection ever struggles, the confirm grid lets the
+player fix marks with a tap — nothing can block a game night. Entry is
+QR-only: camera or photo upload, no codes to type.
 
 ## Board codes
 
 Each board has one 8-character code (like `K7QM-X2P9`) that is its whole
 identity: printed under the QR, **embedded in the QR payload**
-(`<site>/?scan=K7QMX2P9`), typed as the manual fallback, and used in URLs.
+(`<site>/?scan=K7QMX2P9`), and used in URLs. Players never type it — the QR
+is the only way in.
 32⁸ ≈ 1.1 trillion combinations, so codes double as the sheet's unguessable
 credential — a code only works if you have the paper.
 

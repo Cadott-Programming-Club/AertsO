@@ -8,13 +8,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import jsQR from 'jsqr'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
   COLS,
   parseScanPayload,
-  parseScanValue,
   formatCode,
   FRAME_W,
   GRID,
@@ -77,8 +75,6 @@ export function Scanner({
     disputedCount?: number
     keysCount?: number
   }>(null)
-  const [manualCode, setManualCode] = useState('')
-  const [manualError, setManualError] = useState('')
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -93,61 +89,18 @@ export function Scanner({
   useEffect(() => () => stopCamera(), [stopCamera])
 
   // ---------- deep link (?scan=CODE from a native-camera QR scan) ----------
-  // The printed QR contains the board code, so a phone's built-in camera can
-  // open the site with the board already identified — no in-app re-scan.
+  // The printed QR contains the board code — a native camera scan opens the
+  // site straight into the SHEET SCANNER. The board is never auto-entered:
+  // the in-app scan re-reads the QR (identifying the sheet) and samples the
+  // player's inked marks off the paper in the same pass.
   const deepLinkRef = useRef<string | null>(null)
   useEffect(() => {
     const raw = initialScan?.trim()
     if (!raw || deepLinkRef.current === raw) return
     deepLinkRef.current = raw
-    const payload = parseScanValue(raw)
-    if (!payload) return
-    void resolveDeepLink(payload)
+    void startCamera()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once per payload
   }, [initialScan])
-
-  const resolveDeepLink = async (payload: { kind: 'board'; code: string } | { kind: 'answers' }) => {
-    setPhase('processing')
-    setStatus('Loading sheet…')
-    try {
-      if (payload.kind === 'board') {
-        const res = await fetch(`/api/board/${payload.code}`)
-        if (!res.ok) {
-          const json = await res.json().catch(() => ({}))
-          throw new Error(json.error ?? 'No board matches that code.')
-        }
-        const json = await res.json()
-        runOutcome({
-          kind: 'board',
-          board: json.board,
-          marks: new Array(36).fill(false),
-          confidence: new Array(36).fill(0),
-          aligned: false,
-          findersFound: 0,
-          photo: '',
-        })
-        setStatus(`Board ${formatCode(json.board.code)} loaded — tap the spaces you marked on paper, then submit.`)
-      } else {
-        const res = await fetch(`/api/board/${ANSWER_TOKEN}`)
-        if (!res.ok) throw new Error('Could not load the item pool.')
-        const json = await res.json()
-        const n: number = json.items.length
-        runOutcome({
-          kind: 'answers',
-          answerItems: json.items,
-          marks: new Array(n).fill(false),
-          confidence: new Array(n).fill(0),
-          aligned: false,
-          findersFound: 0,
-          photo: '',
-        })
-        setStatus('Answer key — tap every item that was drawn, then save. Your key is yours alone; scores release once every admin has saved theirs.')
-      }
-    } catch (e) {
-      setStatus((e as Error).message)
-      setPhase('choose')
-    }
-  }
 
   // ---------- core: analyze one frame/image ----------
   const analyze = useCallback(async (canvas: HTMLCanvasElement): Promise<ScanOutcome | null> => {
@@ -299,7 +252,7 @@ export function Scanner({
         }
       }, 500)
     } catch {
-      setStatus('Camera unavailable — upload a photo or type the board code instead.')
+      setStatus('Camera unavailable — tap "Use camera" to try again, or upload a photo of the sheet.')
       setPhase('choose')
     }
   }
@@ -318,35 +271,14 @@ export function Scanner({
       if (res) {
         runOutcome(res)
       } else {
-        setStatus("Couldn't find the QR code in that photo — try better lighting, or type the board code.")
+        setStatus("Couldn't find the QR code in that photo — try better lighting and make sure the QR at the bottom is visible.")
         setPhase('choose')
       }
     } catch (err) {
       console.error('[aertso] scan failed', err)
-      setStatus(`Scan failed: ${(err as Error).message}. Try the board code instead.`)
+      setStatus(`Scan failed: ${(err as Error).message}. Try again, or upload a photo.`)
       setPhase('choose')
     }
-  }
-
-  // ---------- manual code ----------
-  const onManualCode = async () => {
-    setManualError('')
-    const res = await fetch(`/api/boards/lookup?code=${encodeURIComponent(manualCode.trim())}`)
-    if (!res.ok) {
-      const json = await res.json().catch(() => ({}))
-      setManualError(json.error ?? 'No board with that code.')
-      return
-    }
-    const json = await res.json()
-    runOutcome({
-      kind: 'board',
-      board: json.board,
-      marks: new Array(36).fill(false),
-      confidence: new Array(36).fill(0),
-      aligned: false,
-      findersFound: 0,
-      photo: '',
-    })
   }
 
   // ---------- submit ----------
@@ -413,21 +345,6 @@ export function Scanner({
                 Upload a photo
               </Button>
             </label>
-          </div>
-          <div className="flex items-end gap-2">
-            <div className="flex-1">
-              <Input
-                placeholder="Board code (e.g. K7QM-X2P9)"
-                value={manualCode}
-                maxLength={9}
-                onChange={(e) => setManualCode(e.target.value.toUpperCase())}
-                onKeyDown={(e) => e.key === 'Enter' && onManualCode()}
-              />
-              {manualError && <p className="text-destructive text-sm mt-1">{manualError}</p>}
-            </div>
-            <Button variant="secondary" onClick={onManualCode}>
-              Look up
-            </Button>
           </div>
           {status && <p className="text-sm text-muted-foreground">{status}</p>}
         </CardContent>

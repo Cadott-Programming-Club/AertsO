@@ -110,13 +110,14 @@ export function answerBoxCenterMM(index: number, rowH: number): [number, number]
 
 // ---- board codes -----------------------------------------------------------------------
 // The 8-character code is the board's single identity: printed on the sheet,
-// embedded in the QR payload, typed as the manual fallback, and used in URLs.
+// embedded in the QR payload, and used in URLs.
 // 32^8 ≈ 1.1 trillion combinations — codes double as unguessable credentials.
 // QR payload shapes (the code is built INTO the QR):
 //   play sheet : <origin>/?scan=<CODE>   (e.g. https://aertso.vercel.app/?scan=K7QMX2P9)
 //   answer key : <origin>/?scan=ANSWERS
-// A native phone-camera scan of the QR opens that URL directly and the site
-// loads the board without any in-app re-scan.
+// A native phone-camera scan of the QR opens that URL directly, straight
+// into the sheet scanner — the sheet itself is then scanned in-app so the
+// marks are read off the paper (the code is never typed or auto-entered).
 export const ANSWER_TOKEN = 'ANSWERS';
 
 export function normalizeCode(raw: string): string | null {

@@ -3,7 +3,8 @@
 // AertsO — paper bingo you verify with your phone.
 // Single-route app: views switch via search params (?view=scan, ?print=…, ?scan=CODE).
 // ?scan=CODE is the deep link baked into every printed QR — a native phone-camera
-// scan opens the site with that board already loaded.
+// scan opens the site straight into the sheet scanner (camera ready, board NOT
+// auto-entered — the sheet is scanned so the marks are read off the paper).
 
 import { Suspense, useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
@@ -178,7 +179,7 @@ function AertsOApp() {
                 {[
                   { n: '1', t: 'Get a sheet', d: 'Club admins print every AertsO sheet — each one has its own QR code with its board code built in. Just grab one and a pen.' },
                   { n: '2', t: 'Play on paper', d: 'Ink the small corner box of each space as you get it. Old-school bingo, zero screens while you play.' },
-                  { n: '3', t: 'Scan to score', d: 'Scan the QR with your phone — the board loads instantly — tap your marks. Bingo is verified once every admin has entered their answer key and the scores release.' },
+                  { n: '3', t: 'Scan to score', d: 'Scan your sheet with the phone camera — the QR and your inked marks are read straight off the paper. Bingo is verified once every admin has entered their answer key and the scores release.' },
                 ].map((s) => (
                   <Card key={s.n} className="bg-card">
                     <CardContent className="pt-5">
