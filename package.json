@@ -5,10 +5,9 @@
   "description": "AertsO — 6x6 paper bingo with phone verification. Cadott Programming Club.",
   "scripts": {
     "dev": "next dev",
-    "build": "prisma db push --skip-generate || echo '[aertso] db push failed - create tables via Admin > Initialize database'; next build",
+    "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "db:push": "prisma db push",
     "db:generate": "prisma generate"
   },
   "postinstall": "prisma generate",

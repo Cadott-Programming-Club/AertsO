@@ -79,23 +79,22 @@ Then set the environment variables:
 stay signed in for 30 days. With no SMTP configured the code is returned in
 the API response and logged (dev mode) — set up SMTP before real games.
 
-### 2. Database (automatic, with a manual fallback)
+### 2. Database (one click)
 
-The build pushes the schema automatically: `prisma db push` runs as part of
-`npm run build` using the integration's `POSTGRES_URL_NON_POOLING` (a failed
-push doesn't block the deploy), and the app enables row-level security on
-every table at boot (no policies → deny-by-default for anon keys; the app's
-direct connection is unaffected). If the tables are ever missing, sign in as
-an admin — the panel shows an **Initialize database** button that creates them
-in one click (idempotent).
+After your first deploy, sign in with an admin email — the admin panel shows
+an **Initialize database** button that creates the `AertsO*` tables (idempotent,
+RLS-enabled, touches nothing else). That's the whole setup.
+
+> ⚠️ **Do not run `prisma db push` against the shared Supabase project.**
+> The schema only knows the AertsO tables, so db push wants to DROP every
+> other app's tables to "fix the drift" — if you ever see a data-loss
+> warning, stop; `--accept-data-loss` would delete live data from other sites
+> sharing the project. Table creation belongs to the Initialize button (or
+> the equivalent `CREATE TABLE IF NOT EXISTS` SQL).
 
 Tables are all prefixed `AertsO*`, so sharing an existing Supabase project is
-safe. To push the schema manually from your machine instead:
-
-```bash
-POSTGRES_URL_NON_POOLING="postgresql://postgres.<project-ref>:<password>@aws-0-us-east-1.pooler.supabase.com:5432/postgres" \
-  npx prisma db push
-```
+safe. Row-level security is enabled on every table at boot (no policies →
+deny-by-default for anon keys; the app's direct connection is unaffected).
 
 ### 3. Local development
 
