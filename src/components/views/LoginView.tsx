@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
 
 export interface Me {
   email: string
@@ -104,6 +105,16 @@ export function LoginView({ onSuccess, embedded = false }: { onSuccess: (me: Me)
             <Button disabled={busy || code.length !== 6} onClick={verify}>
               {busy ? 'Checking…' : 'Sign in'}
             </Button>
+            {/* Real email flow only — dev mode surfaces the code directly instead. */}
+            {!devCode && (
+              <div className="flex items-start gap-2.5 rounded-md border bg-muted/50 px-3 py-2.5">
+                <Badge variant="secondary" className="mt-0.5 shrink-0">Check spam</Badge>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Codes are sent out the moment you request one. If yours isn&apos;t in your inbox or spam
+                  folder, contact Brody.
+                </p>
+              </div>
+            )}
             <button
               className="text-xs text-muted-foreground hover:underline self-start"
               onClick={() => {

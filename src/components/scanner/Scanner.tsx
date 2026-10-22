@@ -64,6 +64,11 @@ export function Scanner({
   const [outcome, setOutcome] = useState<ScanOutcome | null>(null)
   const [marks, setMarks] = useState<boolean[]>([])
   const [status, setStatus] = useState('')
+  // getUserMedia was refused without a user gesture (iOS Safari deep link) or
+  // the permission is off — park on a one-tap "Start the camera" screen.
+  const [needsTap, setNeedsTap] = useState(false)
+  // the sheet wouldn't frame for ~7s — surface an explicit manual-entry escape
+  const [frameTrouble, setFrameTrouble] = useState(false)
   const [submitResult, setSubmitResult] = useState<null | {
     board?: { code?: string }
     bingo?: boolean
@@ -84,8 +89,10 @@ export function Scanner({
   const answersCacheRef = useRef<{ id: string; text: string }[] | null>(null)
   // consecutive frames where the QR decoded but the sheet wasn't framed yet
   const unframedRef = useRef(0)
-  // after this many unframed tries (~7s), accept the QR alone and fall back to
-  // manual taps — never trap the user in the camera
+  // after this many unframed tries (~7s) we surface an explicit "tap your marks
+  // manually" escape button. The live loop itself NEVER accepts a QR-only
+  // decode — auto-dumping an unframed player into the manual grid is exactly
+  // the "it only lets me punch it in" bug the QR deep-link flow had.
   const UNFRAMED_LIMIT = 14
 
   const stopCamera = useCallback(() => {
@@ -247,6 +254,8 @@ export function Scanner({
   // ---------- camera ----------
   const startCamera = async () => {
     setPhase('camera')
+    setNeedsTap(false)
+    setFrameTrouble(false)
     unframedRef.current = 0
     setStatus('Fit the whole sheet in the frame — the QR and your inked marks are read together.')
     try {
@@ -266,12 +275,14 @@ export function Scanner({
         canvas.height = v.videoHeight
         if (!canvas.width) return
         canvas.getContext('2d')!.drawImage(v, 0, 0)
-        // while the sheet isn't framed, keep scanning and coach the user —
-        // only accept the decode once the marks can be read off the paper
-        const requireFrame = unframedRef.current < UNFRAMED_LIMIT
-        const res = await analyze(canvas, { requireFrame })
+        // live camera ALWAYS requires the whole sheet to be framed — the marks
+        // are read off the paper, never guessed from a QR-only decode. A player
+        // who can't frame the sheet gets an explicit escape button instead of
+        // being dropped into the manual tap grid.
+        const res = await analyze(canvas, { requireFrame: true })
         if (res === 'unframed') {
           unframedRef.current++
+          if (unframedRef.current >= UNFRAMED_LIMIT) setFrameTrouble(true)
           setStatus(
             unframedRef.current > 8
               ? 'Still reading the sheet — flatten the paper, use even light, and fill the frame with the whole sheet.'
@@ -285,8 +296,32 @@ export function Scanner({
         }
       }, 500)
     } catch {
-      setStatus('Camera unavailable — tap "Use camera" to try again, or upload a photo of the sheet.')
-      setPhase('choose')
+      // Most often iOS Safari refusing a programmatic camera start without a
+      // user gesture (a deep link just opened the page), or the camera
+      // permission is off. Never fall back to manual entry over this — one
+      // tap satisfies the gesture requirement and unlocks the camera.
+      console.warn('[aertso] camera start failed — parking on one-tap start')
+      stopCamera()
+      setNeedsTap(true)
+    }
+  }
+
+  // ---------- manual escape (live loop couldn't frame the sheet) ----------
+  // Hands the player the tap grid using whatever the camera currently sees.
+  // Only reachable through the explicit button — never chosen for them.
+  const manualFromCamera = async () => {
+    const v = videoRef.current
+    if (!v || !v.videoWidth) return
+    const canvas = document.createElement('canvas')
+    canvas.width = v.videoWidth
+    canvas.height = v.videoHeight
+    canvas.getContext('2d')!.drawImage(v, 0, 0)
+    const res = await analyze(canvas)
+    if (res && res !== 'unframed') {
+      stopCamera()
+      runOutcome(res)
+    } else {
+      setStatus('Point the camera at the sheet so the QR at the bottom is readable, then try again.')
     }
   }
 
@@ -294,9 +329,9 @@ export function Scanner({
   // The printed QR contains the board code — a native camera scan opens the
   // site straight into the SHEET SCANNER. The board is never auto-entered:
   // the in-app scan re-reads the QR (identifying the sheet) and samples the
-  // player's inked marks off the paper in the same pass. Placed after
-  // startCamera's declaration (effects run post-render, but this keeps the
-  // lint honest).
+  // player's inked marks off the paper in the same pass. Where the platform
+  // refuses a gesture-less camera start (iOS Safari), startCamera parks on a
+  // one-tap "Start the camera" screen instead of falling back to manual entry.
   const deepLinkRef = useRef<string | null>(null)
   useEffect(() => {
     const raw = initialScan?.trim()
@@ -406,8 +441,30 @@ export function Scanner({
         <CardContent className="flex flex-col gap-3 p-4">
           <div className="relative rounded-xl overflow-hidden bg-black aspect-[4/3]">
             <video ref={videoRef} playsInline muted className="w-full h-full object-cover" />
+            {needsTap && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/80 px-6 text-center">
+                <p className="text-sm text-white/90">The camera needs one tap to start.</p>
+                <Button size="lg" onClick={() => void startCamera()}>
+                  Start the camera
+                </Button>
+                <p className="text-xs text-white/60">
+                  If it still won&apos;t open, allow camera access for this site in your browser settings — or
+                  cancel and upload a photo of the sheet.
+                </p>
+              </div>
+            )}
           </div>
-          <p className="text-sm text-muted-foreground">{status}</p>
+          {!needsTap && <p className="text-sm text-muted-foreground">{status}</p>}
+          {frameTrouble && !needsTap && (
+            <div className="rounded-lg border bg-muted/40 p-3 flex flex-col gap-2">
+              <p className="text-sm text-muted-foreground">
+                Can&apos;t get the whole sheet in view? Your marks can also be tapped in by hand.
+              </p>
+              <Button variant="outline" onClick={() => void manualFromCamera()}>
+                Enter marks by tapping instead
+              </Button>
+            </div>
+          )}
           <Button
             variant="outline"
             onClick={() => {
