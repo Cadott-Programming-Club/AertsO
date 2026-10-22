@@ -1,0 +1,88 @@
+// AertsO — paper bingo with scanned verification.
+// Sandbox/dev: SQLite. Production (repo copy): provider switched to postgresql
+// (Supabase) — model fields are cross-provider safe (no arrays, uuid() defaults).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AertsOUser {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  isAdmin   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessions    AertsOSession[]
+  boards      AertsOBoard[]
+  submissions AertsOSubmission[]
+}
+
+model AertsOSession {
+  token     String   @id
+  userId    String
+  user      AertsOUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model AertsOLoginCode {
+  id         String    @id @default(uuid())
+  email      String
+  code       String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([email])
+}
+
+model AertsOItem {
+  id        String   @id @default(uuid())
+  text      String   @unique
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model AertsOBoard {
+  id        String   @id @default(uuid())
+  code      String   @unique // short human code, printed under the QR (e.g. K7QM)
+  token     String   @unique // secret embedded in the QR URL
+  layout    String // JSON: 36 item ids, row-major
+  ownerId   String?
+  owner     AertsOUser? @relation(fields: [ownerId], references: [id])
+  createdAt DateTime @default(now())
+
+  submission AertsOSubmission?
+
+  @@index([ownerId])
+}
+
+model AertsOSubmission {
+  id        String   @id @default(uuid())
+  boardId   String   @unique
+  board     AertsOBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  userId    String
+  user      AertsOUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  marks     String // 36-char bitmap, row-major ('1' = filled)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model AertsOAnswerKey {
+  id        String   @id @default(uuid())
+  itemIds   String // JSON array of called item ids
+  updatedBy String
+  updatedAt DateTime @updatedAt
+}
