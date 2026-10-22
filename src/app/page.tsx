@@ -155,8 +155,8 @@ function AertsOApp() {
               </h1>
               <p className="mt-3 text-muted-foreground max-w-xl mx-auto">
                 The club prints the {GRID}×{GRID} sheets and hands them out. Play with a pen, then scan yours
-                here — your board links to your email and your bingo is checked against the caller&apos;s
-                answer key.
+                here — your board links to your email and your bingo is checked against the admins&apos;
+                answer keys once they&apos;re all in.
               </p>
               <div className="mt-6 flex flex-wrap justify-center gap-3">
                 <Button size="lg" onClick={() => openUrl('/?view=scan')}>
@@ -178,7 +178,7 @@ function AertsOApp() {
                 {[
                   { n: '1', t: 'Get a sheet', d: 'Club admins print every AertsO sheet — each one has its own QR code with its board code built in. Just grab one and a pen.' },
                   { n: '2', t: 'Play on paper', d: 'Ink the small corner box of each space as you get it. Old-school bingo, zero screens while you play.' },
-                  { n: '3', t: 'Scan to score', d: 'Scan the QR with your phone — the board loads instantly — tap your marks, and bingo is verified against the caller\u2019s key.' },
+                  { n: '3', t: 'Scan to score', d: 'Scan the QR with your phone — the board loads instantly — tap your marks. Bingo is verified once every admin has entered their answer key and the scores release.' },
                 ].map((s) => (
                   <Card key={s.n} className="bg-card">
                     <CardContent className="pt-5">

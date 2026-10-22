@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
-import { boardView, getAnswerKey } from '@/lib/boards'
+import { boardView, getAnswerKeyState } from '@/lib/boards'
 
-// Admin: all boards + submissions + live bingo status against the current answer key.
+// Admin: all boards + submissions. While answer keys are still outstanding
+// the scores are SEALED — rows show marks but no bingo verdicts. Once every
+// admin has saved their master key the scores release and are graded against
+// the consensus of all keys.
 export async function GET() {
   const user = await getSessionUser()
   if (!user?.isAdmin) return NextResponse.json({ error: 'Admins only.' }, { status: 403 })
@@ -12,8 +15,8 @@ export async function GET() {
     orderBy: { createdAt: 'desc' },
     include: { submission: true, owner: true },
   })
-  const key = await getAnswerKey()
-  const calledSet = new Set(key.itemIds)
+  const state = await getAnswerKeyState()
+  const calledSet = new Set(state.consensus)
 
   const rows = await Promise.all(
     boards.map(async (b) => {
@@ -22,7 +25,7 @@ export async function GET() {
       let bingo = false
       let winningLines: number[][] = []
       let invalidLines: number[][] = []
-      if (marks) {
+      if (marks && state.released) {
         const { evaluateBingo } = await import('@/lib/layout')
         const res = evaluateBingo(view.itemIds, marks, calledSet)
         bingo = res.bingo
@@ -44,5 +47,15 @@ export async function GET() {
       }
     })
   )
-  return NextResponse.json({ rows, answerKeyExists: key.itemIds.length > 0, calledCount: key.itemIds.length })
+  return NextResponse.json({
+    rows,
+    released: state.released,
+    missing: state.missing,
+    roster: state.roster,
+    keys: state.keys.map((k) => ({ email: k.email, count: k.itemIds.length, updatedAt: k.updatedAt })),
+    consensusCount: state.consensus.length,
+    disputedCount: state.disputed.length,
+    answerKeyExists: state.keys.length > 0,
+    calledCount: state.released ? state.consensus.length : 0,
+  })
 }

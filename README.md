@@ -2,7 +2,7 @@
 
 **6×6 paper bingo, verified by phone.** The club prints the sheets, players play
 with a pen, and one phone scan links a board to the player's email — the site
-checks claimed bingos against the caller's scanned answer key. Built by the
+checks claimed bingos against the admins' answer keys. Built by the
 Cadott Programming Club.
 
 The six columns spell the name: **A · E · R · T · S · O**.
@@ -12,13 +12,14 @@ The six columns spell the name: **A · E · R · T · S · O**.
 1. **Admin — set the pool.** Sign in with an admin email, open *Admin → Item
    pool*, and enter one item per line ("Has a dog", "Born in October", …).
    You need **at least 36** items (a 6×6 board draws 36 distinct items, no
-   repeats on a sheet).
+   repeats on a sheet). The pool is **shared** — every admin sees and edits
+   the same list, and every printed board comes from it.
 2. **Admins print the boards.** *Admin → Print → Generate & print batch*.
    Only admins can print — the print view is gated server-side, and player
    pages print nothing but a "printing is for club admins" notice. Hand the
    paper out at the club.
-3. **Admin prints the answer key.** Same tab — this is the caller's sheet.
-   Ink a box each time you draw an item.
+3. **Each admin prints their own answer key.** Same tab — the caller sheet.
+   Print one per admin and ink a box each time you draw an item.
 4. **Play.** Players ink the small corner box of each space they get. No
    screens while playing.
 5. **Players scan.** The QR on each sheet contains that board's own code —
@@ -26,11 +27,18 @@ The six columns spell the name: **A · E · R · T · S · O**.
    board already loaded (the `?scan=` link). Or use *Scan a sheet* in-app:
    point the camera at the sheet, upload a photo, or type the code under the
    QR (`K7QM-X2P9`). The player confirms the marks with a tap, and the board
-   links to their email.
-6. **Admin scans the answer key.** After the game, scan the caller sheet the
-   same way (its QR is `?scan=ANSWERS`). Every scanned board is scored
-   instantly: verified bingos, "no bingo", or **Review** (a fully-marked line
-   that includes uncalled items — someone marked squares that weren't drawn).
+   links to their email. Marks save right away; **scores stay sealed** until
+   the keys are in.
+6. **Every admin scans their answer key (master key).** After the game, each
+   admin scans their own caller sheet (its QR is `?scan=ANSWERS`). Every key
+   saves under that admin's email — the *Answer keys* tab shows all of them
+   side by side and flags **disputed items** (called by some admins but not
+   others) so you can compare and reconcile. The moment the **last** admin
+   saves their key, scores **release automatically**: boards are graded on
+   the **consensus** (an item counts as called only if it's in every admin's
+   key), and each scan shows a verified bingo, "no bingo", or **Review** (a
+   fully-marked line that includes uncalled items — someone marked squares
+   that weren't drawn, or the item is disputed).
 
 If the camera or the automatic mark detection ever struggles, every step has a
 manual fallback — nothing can block a game night.
@@ -135,7 +143,10 @@ src/
 - Print **at 100% scale** ("Actual size", not "Fit to page").
 - Sheets are cheap — reprint if a photo looks crumpled; scanning works best
   with flat paper and even light.
-- The answer key can be re-scanned or hand-edited any time; scoring updates
-  instantly for every submitted board.
+- Any admin can re-scan or hand-edit their own key any time; the consensus and
+  every submitted board re-grade instantly. Saving a new key when one was
+  missing re-triggers release automatically.
+- A single-admin club works exactly the same: one admin, one key — scores
+  release as soon as that key is saved.
 - A "Review" status on the boards table means a player marked a full line but
   at least one item was never drawn — check their sheet before calling bingo.

@@ -88,6 +88,6 @@ model AertsOSubmission {
 model AertsOAnswerKey {
   id        String   @id @default(uuid())
   itemIds   String // JSON array of called item ids
-  updatedBy String
+  updatedBy String   @unique // admin email — every admin keeps their OWN master key
   updatedAt DateTime @updatedAt
 }

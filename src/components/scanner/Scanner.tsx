@@ -66,7 +66,17 @@ export function Scanner({
   const [outcome, setOutcome] = useState<ScanOutcome | null>(null)
   const [marks, setMarks] = useState<boolean[]>([])
   const [status, setStatus] = useState('')
-  const [submitResult, setSubmitResult] = useState<null | { board?: { code?: string }; bingo?: boolean; answerKeyExists?: boolean; calledCount?: number; saved?: boolean }>(null)
+  const [submitResult, setSubmitResult] = useState<null | {
+    board?: { code?: string }
+    bingo?: boolean
+    answerKeyExists?: boolean
+    calledCount?: number
+    saved?: boolean
+    released?: boolean
+    pendingAdmins?: string[]
+    disputedCount?: number
+    keysCount?: number
+  }>(null)
   const [manualCode, setManualCode] = useState('')
   const [manualError, setManualError] = useState('')
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -131,7 +141,7 @@ export function Scanner({
           findersFound: 0,
           photo: '',
         })
-        setStatus('Answer key — tap every item that was drawn, then save.')
+        setStatus('Answer key — tap every item that was drawn, then save. Your key is yours alone; scores release once every admin has saved theirs.')
       }
     } catch (e) {
       setStatus((e as Error).message)
@@ -354,7 +364,8 @@ export function Scanner({
         body: JSON.stringify({ itemIds: ids }),
       })
       if (res.ok) {
-        setSubmitResult({ saved: true, calledCount: ids.length })
+        const json = await res.json().catch(() => ({}))
+        setSubmitResult({ saved: true, calledCount: ids.length, ...json })
         setPhase('done')
       } else {
         setStatus('Could not save the answer key — try again.')
@@ -538,21 +549,50 @@ export function Scanner({
     return (
       <Card>
         <CardHeader>
-          <CardTitle>{savedKey ? 'Answer key saved' : `Board ${formatCode(submitResult.board?.code ?? '')} linked to your email`}</CardTitle>
+          <CardTitle>
+            {savedKey
+              ? submitResult.released
+                ? 'Master key saved — scores released'
+                : 'Master key saved — scores sealed'
+              : `Board ${formatCode(submitResult.board?.code ?? '')} linked to your email`}
+          </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {savedKey ? (
-            <p className="text-sm text-muted-foreground">
-              {submitResult.calledCount} items recorded as called. Player boards are now being scored against this key.
-            </p>
-          ) : submitResult.bingo ? (
+            submitResult.released ? (
+              <p className="text-sm text-muted-foreground">
+                Your key is in — that was the last one, so scores are released to everyone. Boards are graded on
+                the consensus of all {submitResult.keysCount} key{submitResult.keysCount === 1 ? '' : 's'}
+                {typeof submitResult.disputedCount === 'number' && submitResult.disputedCount > 0
+                  ? ` (${submitResult.disputedCount} disputed item${submitResult.disputedCount === 1 ? '' : 's'} not counted)`
+                  : ''}.
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Your key is saved — {submitResult.calledCount} item{submitResult.calledCount === 1 ? '' : 's'} recorded.
+                Scores stay sealed until every admin saves their key
+                {submitResult.pendingAdmins?.length
+                  ? ` (still waiting on ${submitResult.pendingAdmins.join(', ')})`
+                  : ''}
+                . They release automatically the moment the last one lands.
+              </p>
+            )
+          ) : submitResult.released && submitResult.bingo ? (
             <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">Verified bingo — a full line of called items. 🎉</p>
-          ) : submitResult.answerKeyExists ? (
+          ) : submitResult.released ? (
             <p className="text-sm text-muted-foreground">
               Marks saved. No verified bingo yet against the {submitResult.calledCount} called items.
             </p>
+          ) : submitResult.answerKeyExists ? (
+            <p className="text-sm text-muted-foreground">
+              Marks saved. Scores are sealed until every admin saves their answer key
+              {submitResult.pendingAdmins?.length
+                ? ` (waiting on ${submitResult.pendingAdmins.join(', ')})`
+                : ''}
+              .
+            </p>
           ) : (
-            <p className="text-sm text-muted-foreground">Marks saved. Bingo status appears once the answer key is scanned in.</p>
+            <p className="text-sm text-muted-foreground">Marks saved. Bingo status appears once admins scan in their answer keys.</p>
           )}
           <Button variant="outline" onClick={onDone}>
             Done

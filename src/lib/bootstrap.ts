@@ -94,6 +94,10 @@ export const DDL: string[] = [
     "updatedBy" TEXT NOT NULL,
     "updatedAt" TIMESTAMP(3) NOT NULL
   )`,
+  // one master key PER ADMIN (updatedBy = admin email) — added when the
+  // shared-pool / multi-admin score-release model landed. Idempotent; the
+  // pre-existing table held at most one row per email already.
+  `CREATE UNIQUE INDEX IF NOT EXISTS "AertsOAnswerKey_updatedBy_key" ON "AertsOAnswerKey"("updatedBy")`,
 ]
 
 const RLS: string[] = TABLES.map(
