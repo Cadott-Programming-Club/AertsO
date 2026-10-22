@@ -79,22 +79,23 @@ Then set the environment variables:
 stay signed in for 30 days. With no SMTP configured the code is returned in
 the API response and logged (dev mode) — set up SMTP before real games.
 
-### 2. Database (one click)
+### 2. Database (automatic)
 
-After your first deploy, sign in with an admin email — the admin panel shows
-an **Initialize database** button that creates the `AertsO*` tables (idempotent,
-RLS-enabled, touches nothing else). That's the whole setup.
+Nothing to run: on the first request after a deploy, the app creates the
+`AertsO*` tables itself (idempotent `CREATE TABLE IF NOT EXISTS`, then RLS
+enabled on every table — no policies → deny-by-default for anon keys; the
+app's direct connection is unaffected). Login writes to the database, so the
+bootstrap deliberately runs before the first sign-in. The admin panel's
+**Initialize database** button does the same thing on demand as a fallback.
 
 > ⚠️ **Do not run `prisma db push` against the shared Supabase project.**
 > The schema only knows the AertsO tables, so db push wants to DROP every
 > other app's tables to "fix the drift" — if you ever see a data-loss
 > warning, stop; `--accept-data-loss` would delete live data from other sites
-> sharing the project. Table creation belongs to the Initialize button (or
-> the equivalent `CREATE TABLE IF NOT EXISTS` SQL).
+> sharing the project. Table creation belongs to the automatic bootstrap.
 
 Tables are all prefixed `AertsO*`, so sharing an existing Supabase project is
-safe. Row-level security is enabled on every table at boot (no policies →
-deny-by-default for anon keys; the app's direct connection is unaffected).
+safe.
 
 ### 3. Local development
 

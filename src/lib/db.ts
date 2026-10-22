@@ -1,30 +1,18 @@
 import { PrismaClient } from '@prisma/client'
+import { sanitizePrismaUrl } from './prisma-url'
+import { ensureSchema } from './bootstrap'
 
-// The Vercel<->Supabase integration's POSTGRES_PRISMA_URL can carry
-// routing/telemetry query params (e.g. supa=...) that the Prisma query engine
-// rejects. Keep only params Prisma understands before the client resolves
-// env("POSTGRES_PRISMA_URL") from the schema.
-function sanitizePrismaUrl() {
-  const raw = process.env.POSTGRES_PRISMA_URL
-  if (!raw) return
-  try {
-    const u = new URL(raw)
-    const keep = new URLSearchParams()
-    for (const k of ['pgbouncer', 'connection_limit', 'connect_timeout', 'pool_timeout', 'sslmode', 'ssl']) {
-      const v = u.searchParams.get(k)
-      if (v !== null) keep.set(k, v)
-    }
-    const cleaned = u.origin + u.pathname + (keep.toString() ? `?${keep.toString()}` : '')
-    if (cleaned !== raw) process.env.POSTGRES_PRISMA_URL = cleaned
-  } catch {
-    // not a parseable URL — leave untouched and let Prisma surface the error
-  }
+// Hosting integrations can append query params the Prisma engines reject
+// (e.g. supa=…). Sanitize before the client resolves env("POSTGRES_PRISMA_URL").
+const rawUrl = process.env.POSTGRES_PRISMA_URL
+if (rawUrl) {
+  const cleaned = sanitizePrismaUrl(rawUrl)
+  if (cleaned !== rawUrl) process.env.POSTGRES_PRISMA_URL = cleaned
 }
-sanitizePrismaUrl()
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
-  prismaRls: Promise<void> | undefined
+  prismaSchema: Promise<void> | undefined
 }
 
 export const db =
@@ -36,32 +24,20 @@ export const db =
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db
 
 // ---------------------------------------------------------------------------
-// Security bootstrap (Postgres only): enable RLS on every AertsO table with no
-// policies — deny-by-default for anon/authenticated keys. The app's direct
-// connection (postgres role) is unaffected, so nothing changes at runtime.
-// Idempotent, fire-and-forget; matches the posture of the other club sites on
-// the shared Supabase project. Skipped on SQLite (local dev has no RLS).
+// Cold-start bootstrap (Postgres only): create any missing AertsO* tables
+// (idempotent) and enable RLS — deny-by-default for anon/authenticated keys;
+// the app's direct connection (postgres role) is unaffected.
+//
+// This runs at module load, fire-and-forget. Login writes to the DB, so the
+// tables must exist before anyone can even sign in — this is what makes a
+// fresh deploy usable. Routes that touch the DB before login can
+// `await schemaReady()` to order themselves after the bootstrap.
+// Skipped on SQLite (local dev has no RLS and uses `prisma db push`).
 // ---------------------------------------------------------------------------
-const RLS_TABLES = [
-  'AertsOUser',
-  'AertsOSession',
-  'AertsOLoginCode',
-  'AertsOItem',
-  'AertsOBoard',
-  'AertsOSubmission',
-  'AertsOAnswerKey',
-]
+globalForPrisma.prismaSchema ??= ensureSchema(db).catch((e) =>
+  console.error('[aertso] schema bootstrap failed', e),
+)
 
-async function ensureRls() {
-  const url = process.env.POSTGRES_PRISMA_URL ?? process.env.DATABASE_URL ?? ''
-  if (!/^postgres(ql)?:\/\//i.test(url)) return
-  for (const t of RLS_TABLES) {
-    try {
-      await db.$executeRawUnsafe(`ALTER TABLE "${t}" ENABLE ROW LEVEL SECURITY`)
-    } catch (e) {
-      console.error(`[aertso] could not enable RLS on ${t}`, e)
-    }
-  }
+export function schemaReady(): Promise<void> {
+  return globalForPrisma.prismaSchema ?? Promise.resolve()
 }
-
-globalForPrisma.prismaRls ??= ensureRls().catch((e) => console.error('[aertso] RLS bootstrap failed', e))

@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { db, schemaReady } from '@/lib/db'
 import { cookies, headers } from 'next/headers'
 import crypto from 'crypto'
 
@@ -32,6 +32,9 @@ export function randomToken(bytes = 32) {
 
 // ---- login codes -----------------------------------------------------------------------
 export async function createLoginCode(email: string) {
+  // First DB touch on a fresh deploy — make sure the cold-start schema
+  // bootstrap (table creation) has settled before writing.
+  await schemaReady()
   const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0')
   await db.aertsOLoginCode.create({
     data: {

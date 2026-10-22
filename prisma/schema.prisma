@@ -1,12 +1,11 @@
 // AertsO — paper bingo with scanned verification.
 // Local dev: SQLite (flip provider to "sqlite" + DATABASE_URL=file:…).
 // Production (Vercel + Supabase integration): postgresql — the schema reads the
-// integration-injected vars (POSTGRES_PRISMA_URL / POSTGRES_URL_NON_POOLING),
-// and db.ts enables RLS at runtime. Tables are created by the admin-only
-// /api/admin/setup route (Admin → Initialize database) — NEVER by
-// `prisma db push`, which on the SHARED Supabase project would try to drop
-// every other app's tables. Model fields are cross-provider safe (no arrays,
-// uuid() defaults).
+// integration-injected vars (POSTGRES_PRISMA_URL / POSTGRES_URL_NON_POOLING).
+// Tables are created automatically at cold start (lib/bootstrap.ts, idempotent
+// CREATE TABLE IF NOT EXISTS + RLS enable) — NEVER by `prisma db push`, which
+// on the SHARED Supabase project would try to drop every other app's tables.
+// Model fields are cross-provider safe (no arrays, uuid() defaults).
 
 generator client {
   provider = "prisma-client-js"
