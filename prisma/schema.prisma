@@ -1,6 +1,8 @@
 // AertsO — paper bingo with scanned verification.
-// Sandbox/dev: SQLite. Production (repo copy): provider switched to postgresql
-// (Supabase) — model fields are cross-provider safe (no arrays, uuid() defaults).
+// Local dev: SQLite (flip provider to "sqlite" + DATABASE_URL=file:…).
+// Production (Vercel): postgresql (Supabase) — the build script runs
+// `prisma db push`, and db.ts enables RLS at runtime — model fields are
+// cross-provider safe (no arrays, uuid() defaults).
 
 generator client {
   provider = "prisma-client-js"
@@ -55,8 +57,7 @@ model AertsOItem {
 
 model AertsOBoard {
   id        String   @id @default(uuid())
-  code      String   @unique // short human code, printed under the QR (e.g. K7QM)
-  token     String   @unique // secret embedded in the QR URL
+  code      String   @unique // 8-char code — printed on the sheet AND embedded in the QR
   layout    String // JSON: 36 item ids, row-major
   ownerId   String?
   owner     AertsOUser? @relation(fields: [ownerId], references: [id])
