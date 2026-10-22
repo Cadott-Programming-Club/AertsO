@@ -2,10 +2,10 @@
   "name": "aertso",
   "version": "1.0.0",
   "private": true,
-  "description": "AertsO — 6x6 paper bingo with phone verification. Cadott Programming Club.",
+  "description": "AertsO \u2014 6x6 paper bingo with phone verification. Cadott Programming Club.",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint .",
     "db:generate": "prisma generate"

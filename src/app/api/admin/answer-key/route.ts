@@ -45,11 +45,17 @@ export async function POST(req: Request) {
   const { itemIds } = await req.json().catch(() => ({ itemIds: null }))
   if (!Array.isArray(itemIds)) return NextResponse.json({ error: 'Send itemIds array.' }, { status: 400 })
 
-  await db.aertsOAnswerKey.upsert({
-    where: { updatedBy: user.email },
-    create: { itemIds: JSON.stringify(itemIds), updatedBy: user.email },
-    update: { itemIds: JSON.stringify(itemIds) },
-  })
+  // findFirst + update/create instead of a unique-input upsert: the Vercel
+  // build cache can serve a stale generated Prisma client that doesn't know
+  // updatedBy is unique (postinstall may not re-run on cached installs), and
+  // this shape works regardless. Concurrent saves by the same admin are
+  // practically impossible (one device, one sheet).
+  const existing = await db.aertsOAnswerKey.findFirst({ where: { updatedBy: user.email } })
+  if (existing) {
+    await db.aertsOAnswerKey.update({ where: { id: existing.id }, data: { itemIds: JSON.stringify(itemIds) } })
+  } else {
+    await db.aertsOAnswerKey.create({ data: { itemIds: JSON.stringify(itemIds), updatedBy: user.email } })
+  }
 
   const state = await getAnswerKeyState()
   return NextResponse.json({
