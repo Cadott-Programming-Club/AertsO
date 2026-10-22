@@ -1,5 +1,27 @@
 import { PrismaClient } from '@prisma/client'
 
+// The Vercel<->Supabase integration's POSTGRES_PRISMA_URL can carry
+// routing/telemetry query params (e.g. supa=...) that the Prisma query engine
+// rejects. Keep only params Prisma understands before the client resolves
+// env("POSTGRES_PRISMA_URL") from the schema.
+function sanitizePrismaUrl() {
+  const raw = process.env.POSTGRES_PRISMA_URL
+  if (!raw) return
+  try {
+    const u = new URL(raw)
+    const keep = new URLSearchParams()
+    for (const k of ['pgbouncer', 'connection_limit', 'connect_timeout', 'pool_timeout', 'sslmode', 'ssl']) {
+      const v = u.searchParams.get(k)
+      if (v !== null) keep.set(k, v)
+    }
+    const cleaned = u.origin + u.pathname + (keep.toString() ? `?${keep.toString()}` : '')
+    if (cleaned !== raw) process.env.POSTGRES_PRISMA_URL = cleaned
+  } catch {
+    // not a parseable URL — leave untouched and let Prisma surface the error
+  }
+}
+sanitizePrismaUrl()
+
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
   prismaRls: Promise<void> | undefined
@@ -31,7 +53,7 @@ const RLS_TABLES = [
 ]
 
 async function ensureRls() {
-  const url = process.env.DATABASE_URL ?? ''
+  const url = process.env.POSTGRES_PRISMA_URL ?? process.env.DATABASE_URL ?? ''
   if (!/^postgres(ql)?:\/\//i.test(url)) return
   for (const t of RLS_TABLES) {
     try {

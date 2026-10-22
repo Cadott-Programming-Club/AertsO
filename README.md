@@ -56,32 +56,19 @@ human signs off.
 
 ## Setup
 
-### 1. Database (Supabase Postgres)
-
-Create a project at [supabase.com](https://supabase.com) (or reuse one), then
-just set the env vars below — **the Vercel build pushes the schema
-automatically** (`prisma db push` runs as part of `npm run build`), and the
-app enables row-level security on every table at boot (no policies →
-deny-by-default for anon keys; the app's direct connection is unaffected).
-
-Tables are all prefixed `AertsO*`, so sharing an existing project is safe.
-
-To push the schema manually from your machine instead:
-
-```bash
-DATABASE_URL="postgresql://postgres.<project-ref>:<password>@aws-0-us-east-1.pooler.supabase.com:5432/postgres" \
-  npx prisma db push
-```
-
-### 2. Deploy (Vercel)
+### 1. Deploy (Vercel)
 
 Import this repo at [vercel.com/new](https://vercel.com/new) — zero build
-config needed — and set the environment variables:
+config needed — and connect your Supabase project with the official
+**Supabase integration** (Project → Storage → Add Database → Supabase, or from
+[supabase.com](https://supabase.com) → Integrations → Vercel). The integration
+injects `POSTGRES_PRISMA_URL` / `POSTGRES_URL_NON_POOLING`, which the Prisma
+schema reads directly — **no `DATABASE_URL` needed.**
+
+Then set the environment variables:
 
 | Variable | Value |
 |---|---|
-| `DATABASE_URL` | `postgresql://postgres.<ref>:<password>@aws-0-us-east-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1` (transaction pooler — best for serverless) |
-| `DIRECT_DATABASE_URL` | same but port `5432` **without** `?pgbouncer` — used only by the build-time schema push (optional; falls back to `DATABASE_URL`) |
 | `ADMIN_EMAILS` | comma-separated admin emails, e.g. `you@school.org,teacher@school.org` — **only admins can print** |
 | `SMTP_HOST` | your SMTP host, e.g. `mail.ddylongneck.com` |
 | `SMTP_PORT` | `587` (or `465` for implicit TLS) |
@@ -92,6 +79,24 @@ config needed — and set the environment variables:
 stay signed in for 30 days. With no SMTP configured the code is returned in
 the API response and logged (dev mode) — set up SMTP before real games.
 
+### 2. Database (automatic, with a manual fallback)
+
+The build pushes the schema automatically: `prisma db push` runs as part of
+`npm run build` using the integration's `POSTGRES_URL_NON_POOLING` (a failed
+push doesn't block the deploy), and the app enables row-level security on
+every table at boot (no policies → deny-by-default for anon keys; the app's
+direct connection is unaffected). If the tables are ever missing, sign in as
+an admin — the panel shows an **Initialize database** button that creates them
+in one click (idempotent).
+
+Tables are all prefixed `AertsO*`, so sharing an existing Supabase project is
+safe. To push the schema manually from your machine instead:
+
+```bash
+POSTGRES_URL_NON_POOLING="postgresql://postgres.<project-ref>:<password>@aws-0-us-east-1.pooler.supabase.com:5432/postgres" \
+  npx prisma db push
+```
+
 ### 3. Local development
 
 ```bash
@@ -101,9 +106,9 @@ npm run dev
 ```
 
 For a quick SQLite dev database, change `provider` in `prisma/schema.prisma`
-to `"sqlite"` and set `DATABASE_URL=file:./dev.db` — the schema is
-cross-provider by design. (Flip the provider back to `"postgresql"` before
-committing/pushing.)
+to `"sqlite"`, both `url`/`directUrl` to `env("DATABASE_URL")`, and set
+`DATABASE_URL=file:./dev.db` — the schema is cross-provider by design. (Flip
+the provider back to `"postgresql"` before committing/pushing.)
 
 ## Project map
 

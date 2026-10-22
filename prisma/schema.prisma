@@ -1,16 +1,18 @@
 // AertsO — paper bingo with scanned verification.
 // Local dev: SQLite (flip provider to "sqlite" + DATABASE_URL=file:…).
-// Production (Vercel): postgresql (Supabase) — the build script runs
-// `prisma db push`, and db.ts enables RLS at runtime — model fields are
-// cross-provider safe (no arrays, uuid() defaults).
+// Production (Vercel + Supabase integration): postgresql — the schema reads the
+// integration-injected vars (POSTGRES_PRISMA_URL / POSTGRES_URL_NON_POOLING),
+// the build script best-effort runs `prisma db push`, db.ts enables RLS at
+// runtime, and model fields are cross-provider safe (no arrays, uuid() defaults).
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("POSTGRES_PRISMA_URL")
+  directUrl = env("POSTGRES_URL_NON_POOLING")
 }
 
 model AertsOUser {

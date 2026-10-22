@@ -38,6 +38,19 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
   const [rows, setRows] = useState<Row[]>([])
   const [keyInfo, setKeyInfo] = useState<{ calledCount: number; exists: boolean } | null>(null)
   const [lastIds, setLastIds] = useState('')
+  const [dbReady, setDbReady] = useState<boolean | null>(null)
+  const [settingUp, setSettingUp] = useState(false)
+
+  const probeDb = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/setup')
+      if (!res.ok) return
+      const json = await res.json()
+      setDbReady(Boolean(json.ready))
+    } catch {
+      // ignore — banner simply stays hidden
+    }
+  }, [])
 
   const loadItems = useCallback(async () => {
     const res = await fetch('/api/items')
@@ -58,10 +71,33 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
   }, [])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async fetch on mount
     loadItems()
     loadSubs()
-  }, [loadItems, loadSubs])
+    probeDb()
+  }, [loadItems, loadSubs, probeDb])
+
+  const runSetup = async () => {
+    setMsg('')
+    setSettingUp(true)
+    try {
+      const res = await fetch('/api/admin/setup', { method: 'POST' })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setMsg(json.error ?? 'Setup failed.')
+        return
+      }
+      setDbReady(true)
+      setMsg(
+        json.created > 0
+          ? `Database ready — ${json.created} of ${json.total} tables created.`
+          : 'Database already initialized.',
+      )
+      loadItems()
+      loadSubs()
+    } finally {
+      setSettingUp(false)
+    }
+  }
 
   const saveItems = async () => {
     setMsg('')
@@ -126,6 +162,16 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
         </CardTitle>
       </CardHeader>
       <CardContent>
+        {dbReady === false && (
+          <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3">
+            <p className="min-w-40 flex-1 text-sm">
+              <span className="font-medium">Database not initialized.</span> Create the tables to get started.
+            </p>
+            <Button size="sm" onClick={runSetup} disabled={settingUp}>
+              {settingUp ? 'Creating…' : 'Initialize database'}
+            </Button>
+          </div>
+        )}
         <Tabs defaultValue="items">
           <TabsList className="flex-wrap h-auto">
             <TabsTrigger value="items">Item pool</TabsTrigger>
