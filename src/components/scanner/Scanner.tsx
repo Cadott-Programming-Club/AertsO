@@ -78,6 +78,15 @@ export function Scanner({
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // sheet lookups are cached per scan session — the live loop re-analyzes every
+  // 500ms while the user frames the sheet, and the board layout never changes.
+  const boardCacheRef = useRef<Map<string, BoardData>>(new Map())
+  const answersCacheRef = useRef<{ id: string; text: string }[] | null>(null)
+  // consecutive frames where the QR decoded but the sheet wasn't framed yet
+  const unframedRef = useRef(0)
+  // after this many unframed tries (~7s), accept the QR alone and fall back to
+  // manual taps — never trap the user in the camera
+  const UNFRAMED_LIMIT = 14
 
   const stopCamera = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current)
@@ -88,22 +97,12 @@ export function Scanner({
 
   useEffect(() => () => stopCamera(), [stopCamera])
 
-  // ---------- deep link (?scan=CODE from a native-camera QR scan) ----------
-  // The printed QR contains the board code — a native camera scan opens the
-  // site straight into the SHEET SCANNER. The board is never auto-entered:
-  // the in-app scan re-reads the QR (identifying the sheet) and samples the
-  // player's inked marks off the paper in the same pass.
-  const deepLinkRef = useRef<string | null>(null)
-  useEffect(() => {
-    const raw = initialScan?.trim()
-    if (!raw || deepLinkRef.current === raw) return
-    deepLinkRef.current = raw
-    void startCamera()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once per payload
-  }, [initialScan])
-
   // ---------- core: analyze one frame/image ----------
-  const analyze = useCallback(async (canvas: HTMLCanvasElement): Promise<ScanOutcome | null> => {
+  // requireFrame: live camera mode refuses a QR-only decode — the sheet must
+  // be framed (all four corner finders visible) so the marks are actually
+  // sampled off the paper. Returns 'unframed' to keep the loop scanning.
+  const analyze = useCallback(
+    async (canvas: HTMLCanvasElement, opts: { requireFrame?: boolean } = {}): Promise<ScanOutcome | 'unframed' | null> => {
     const ctx = canvas.getContext('2d', { willReadFrequently: true })!
     void ctx
     // downscale to sane CV size
@@ -128,19 +127,31 @@ export function Scanner({
     const qrCenter: Pt = qr.center
     const qrWidth = qr.width
 
-    // 2) fetch sheet content
+    // 2) fetch sheet content (cached — the live loop re-runs while framing)
     let board: BoardData | undefined
     let answerItems: { id: string; text: string }[] | undefined
     if (payload.kind === 'board') {
-      const res = await fetch(`/api/board/${payload.code}`)
-      if (!res.ok) return null
-      const json = await res.json()
-      board = json.board
+      const cached = boardCacheRef.current.get(payload.code)
+      if (cached) {
+        board = cached
+      } else {
+        const res = await fetch(`/api/board/${payload.code}`)
+        if (!res.ok) return null
+        const json = await res.json()
+        board = json.board as BoardData
+        boardCacheRef.current.set(payload.code, board)
+      }
     } else {
-      const res = await fetch(`/api/board/${ANSWER_TOKEN}`)
-      if (!res.ok) return null
-      const json = await res.json()
-      answerItems = json.items
+      const cached = answersCacheRef.current
+      if (cached) {
+        answerItems = cached
+      } else {
+        const res = await fetch(`/api/board/${ANSWER_TOKEN}`)
+        if (!res.ok) return null
+        const json = await res.json()
+        answerItems = json.items as { id: string; text: string }[]
+        answersCacheRef.current = answerItems
+      }
     }
 
     // 3) finder detection
@@ -150,6 +161,15 @@ export function Scanner({
     const finderPx = FINDER_PRINTED_MM / mmPerPx
     const candidates = findFinderCandidates(bin, w, h, finderPx * 0.55, finderPx * 1.6)
     const corners = assignCorners(candidates, qrCenter)
+
+    // framing gate (live camera): no accept until the whole sheet is in view —
+    // right after a native QR scan the phone is still close to the sheet, and
+    // accepting a QR-only decode there dumps the player into manual tapping.
+    // Marks can only be sampled when all four corner finders are visible.
+    if (opts.requireFrame) {
+      const topEdgePx = corners ? Math.hypot(corners[1].x - corners[0].x, corners[1].y - corners[0].y) : 0
+      if (!corners || topEdgePx < 250) return 'unframed'
+    }
 
     let marks: boolean[] = []
     let confidence: number[] = []
@@ -227,7 +247,8 @@ export function Scanner({
   // ---------- camera ----------
   const startCamera = async () => {
     setPhase('camera')
-    setStatus('Point at the QR code at the bottom of the sheet…')
+    unframedRef.current = 0
+    setStatus('Fit the whole sheet in the frame — the QR and your inked marks are read together.')
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
@@ -245,7 +266,19 @@ export function Scanner({
         canvas.height = v.videoHeight
         if (!canvas.width) return
         canvas.getContext('2d')!.drawImage(v, 0, 0)
-        const res = await analyze(canvas)
+        // while the sheet isn't framed, keep scanning and coach the user —
+        // only accept the decode once the marks can be read off the paper
+        const requireFrame = unframedRef.current < UNFRAMED_LIMIT
+        const res = await analyze(canvas, { requireFrame })
+        if (res === 'unframed') {
+          unframedRef.current++
+          setStatus(
+            unframedRef.current > 8
+              ? 'Still reading the sheet — flatten the paper, use even light, and fill the frame with the whole sheet.'
+              : 'QR found — pull back so the whole sheet fits in the frame.',
+          )
+          return
+        }
         if (res) {
           stopCamera()
           runOutcome(res)
@@ -256,6 +289,21 @@ export function Scanner({
       setPhase('choose')
     }
   }
+
+  // ---------- deep link (?scan=CODE from a native-camera QR scan) ----------
+  // The printed QR contains the board code — a native camera scan opens the
+  // site straight into the SHEET SCANNER. The board is never auto-entered:
+  // the in-app scan re-reads the QR (identifying the sheet) and samples the
+  // player's inked marks off the paper in the same pass. Placed after
+  // startCamera's declaration (effects run post-render, but this keeps the
+  // lint honest).
+  const deepLinkRef = useRef<string | null>(null)
+  useEffect(() => {
+    const raw = initialScan?.trim()
+    if (!raw || deepLinkRef.current === raw) return
+    deepLinkRef.current = raw
+    void startCamera()
+  }, [initialScan])
 
   // ---------- upload ----------
   const onUpload = async (file: File) => {
@@ -268,7 +316,7 @@ export function Scanner({
       canvas.height = bitmap.height
       canvas.getContext('2d')!.drawImage(bitmap, 0, 0)
       const res = await analyze(canvas)
-      if (res) {
+      if (res && res !== 'unframed') {
         runOutcome(res)
       } else {
         setStatus("Couldn't find the QR code in that photo — try better lighting and make sure the QR at the bottom is visible.")
@@ -445,6 +493,11 @@ export function Scanner({
           ) : (
             <div className="flex flex-wrap gap-3">
               <Button onClick={submit}>{isAnswers ? 'Save answer key' : 'These are my marks'}</Button>
+              {!outcome.aligned && (
+                <Button variant="outline" onClick={() => startCamera()}>
+                  Scan again
+                </Button>
+              )}
               <Button
                 variant="outline"
                 onClick={() => {

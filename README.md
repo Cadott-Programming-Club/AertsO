@@ -63,6 +63,14 @@ ink ratio inside each fill box. Detected marks land in a confirm grid where
 the player fixes any mistakes before submitting — CV does the busywork, the
 human signs off.
 
+In **live camera mode** a QR decode alone is never accepted — the scan only
+goes through once all four corner finders are visible (the whole sheet is
+framed), because that's exactly when the marks can be read off the paper.
+Until then the scanner keeps coaching ("pull back so the whole sheet fits"),
+and only after ~7 seconds of trying does it fall back to the manual tap grid.
+Photo uploads degrade to the tap grid whenever alignment fails, with a
+one-tap "Scan again" retry.
+
 ## Setup
 
 ### 1. Deploy (Vercel)
