@@ -27,14 +27,12 @@ export function BoardSheet({
   qrPayload,
   stamp,
   rules,
-  endsAt,
 }: {
   cells: string[]
   code: string
   qrPayload: string
   stamp?: string
   rules?: string
-  endsAt?: string | null
 }) {
   const finderXY = FINDER_CENTERS.map(([cx, cy]) => [cx - 9, cy - 9]) // top-left of 18mm finder
   return (
@@ -122,23 +120,20 @@ export function BoardSheet({
         <QrBlock payload={qrPayload} caption={`BOARD ${formatCode(code)}`} size={QR_SIZE} />
       </div>
 
-      {/* player footer: how to submit, the deadline, and the club rules.
-          Kept compact so everything fits one letter page under the QR. */}
+      {/* player footer: how to submit and the club rules.
+          Kept compact so everything fits one letter page under the QR.
+          The end date is NOT printed — that space belongs to the rules; the
+          deadline still shows on the website banner. */}
       <div style={{ width: `${FRAME_W}mm`, margin: '3mm auto 0', textAlign: 'center' }}>
         <div style={{ fontSize: '6pt', lineHeight: 1.3, color: '#222' }}>
           <span style={{ fontWeight: 700, letterSpacing: '0.08em' }}>HOW TO SUBMIT: </span>
           Scan the QR code with your phone camera, sign in with your email, and confirm your inked marks. You can
           scan again to update until the game ends.
         </div>
-        {endsAt && (
-          <div style={{ fontSize: '6.5pt', fontWeight: 700, marginTop: '1mm' }}>
-            GAME ENDS: {new Date(endsAt).toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'short' })}
-          </div>
-        )}
         {rules && rules.trim().length > 0 && (
           <div style={{ fontSize: '5.5pt', lineHeight: 1.25, color: '#333', marginTop: '1.5mm', whiteSpace: 'pre-wrap' }}>
-            RULES: {rules.trim().slice(0, 450)}
-            {rules.trim().length > 450 ? '…' : ''}
+            RULES: {rules.trim().slice(0, 600)}
+            {rules.trim().length > 600 ? '…' : ''}
           </div>
         )}
       </div>
@@ -152,13 +147,11 @@ export function BoardBatch({
   origin,
   stamps,
   rules,
-  endsAt,
 }: {
   boards: { cells: string[]; code: string }[]
   origin: string
   stamps?: Record<string, string>
   rules?: string
-  endsAt?: string | null
 }) {
   return (
     <>
@@ -170,7 +163,6 @@ export function BoardBatch({
           qrPayload={`${origin}/?scan=${b.code}`}
           stamp={stamps?.[b.code]}
           rules={rules}
-          endsAt={endsAt}
         />
       ))}
     </>
