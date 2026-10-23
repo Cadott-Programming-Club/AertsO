@@ -88,11 +88,12 @@ model AertsOSubmission {
 
 // Single row (id 'current') — the club's editable game settings.
 model AertsOGame {
-  id        String    @id // always "current"
-  rulesText String? // admin-editable rules — shown on the site and printed on sheets
-  endsAt    DateTime? // submissions lock after this moment (admins can still fix)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id            String    @id // always "current"
+  rulesText     String? // admin-editable rules — shown on the site and printed on sheets
+  endsAt        DateTime? // submissions lock after this moment (admins can still fix)
+  forceReleased Boolean   @default(false) // release scores before every admin key is in
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
 model AertsOAnswerKey {

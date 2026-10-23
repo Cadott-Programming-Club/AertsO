@@ -105,6 +105,7 @@ export const DDL: string[] = [
     "id" TEXT NOT NULL PRIMARY KEY,
     "rulesText" TEXT,
     "endsAt" TIMESTAMP(3),
+    "forceReleased" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL
   )`,
@@ -116,6 +117,7 @@ export const DDL: string[] = [
 // idempotent (ADD COLUMN IF NOT EXISTS).
 export const MIGRATIONS: string[] = [
   `ALTER TABLE "AertsOSubmission" ADD COLUMN IF NOT EXISTS "photo" TEXT`,
+  `ALTER TABLE "AertsOGame" ADD COLUMN IF NOT EXISTS "forceReleased" BOOLEAN NOT NULL DEFAULT false`,
 ]
 
 const RLS: string[] = TABLES.map(

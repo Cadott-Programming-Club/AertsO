@@ -19,6 +19,7 @@ export async function GET() {
   return NextResponse.json({
     me: user.email,
     released: state.released,
+    forceReleased: state.forceReleased, // released early despite missing keys
     roster: state.roster,
     missing: state.missing,
     keys: state.keys.map((k) => ({

@@ -40,6 +40,7 @@ interface KeyInfo {
 }
 interface ReleaseInfo {
   released: boolean
+  forceReleased?: boolean
   roster: string[]
   missing: string[]
   keys: KeyInfo[]
@@ -119,6 +120,7 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
       setRows(json.rows)
       setRelease({
         released: json.released,
+        forceReleased: Boolean(json.forceReleased),
         roster: json.roster,
         missing: json.missing,
         keys: json.keys,
@@ -258,6 +260,43 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
     )
   }
 
+  // "Release scores now": grade against the keys submitted so far instead of
+  // waiting on admins who haven't scanned their answer sheet. If they scan
+  // later, the consensus (and every board's verdict) recomputes automatically.
+  const setForceRelease = async (on: boolean) => {
+    setMsg('')
+    const res = await fetch('/api/game', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ forceReleased: on }),
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setMsg(json.error ?? 'Could not change the release override.')
+      return
+    }
+    loadKeys()
+    loadSubs()
+    if (on) {
+      setMsg('Scores released — boards are graded against the keys submitted so far.')
+    } else {
+      setMsg('Back to sealed — boards show marks only until every admin key is in.')
+    }
+  }
+
+  const releaseNow = () => {
+    const waiting = keyState?.missing.join(', ') ?? 'the other admins'
+    const submitted = keyState?.keys.length ?? 0
+    if (
+      !window.confirm(
+        `Release scores now? Boards will be graded against the ${submitted} key${submitted === 1 ? '' : 's'} submitted so far — ` +
+          `you won't wait on ${waiting}. If they scan their answer sheet later, scores recompute automatically to include their key.`,
+      )
+    )
+      return
+    setForceRelease(true)
+  }
+
   const openReview = async (code: string) => {
     if (reviewCode === code) {
       setReviewCode(null)
@@ -310,7 +349,9 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
           {release && (
             <Badge variant={release.released ? 'default' : 'outline'}>
               {release.released
-                ? `${release.consensusCount} called · scores released`
+                ? release.forceReleased && release.missing.length > 0
+                  ? `${release.consensusCount} called · released early`
+                  : `${release.consensusCount} called · scores released`
                 : release.keys.length > 0
                   ? `${release.keys.length}/${release.roster.length} keys · scores sealed`
                   : 'no answer keys yet'}
@@ -449,11 +490,28 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
             {keyState && (
               <>
                 {keyState.released ? (
-                  <div className="rounded-lg border border-emerald-500/50 bg-emerald-500/10 p-3 text-sm">
-                    <span className="font-medium">Scores released.</span> Every admin key is in — boards are graded on
-                    the consensus: {keyState.consensusCount} item{keyState.consensusCount === 1 ? '' : 's'} called
-                    {keyState.disputedCount > 0 && <> · {keyState.disputedCount} disputed (not counted)</>}.
-                  </div>
+                  keyState.forceReleased && keyState.missing.length > 0 ? (
+                    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-emerald-500/50 bg-emerald-500/10 p-3">
+                      <p className="min-w-40 flex-1 text-sm">
+                        <span className="font-medium">Scores released early.</span> Grading on{' '}
+                        {keyState.keys.length} of {keyState.roster.length} admin key
+                        {keyState.roster.length === 1 ? '' : 's'} — still waiting on{' '}
+                        <span className="font-medium">{keyState.missing.join(', ')}</span>: {keyState.consensusCount} item
+                        {keyState.consensusCount === 1 ? '' : 's'} called
+                        {keyState.disputedCount > 0 && <> · {keyState.disputedCount} disputed (not counted)</>}. If their
+                        key lands later, scores recompute automatically.
+                      </p>
+                      <Button size="sm" variant="outline" onClick={() => setForceRelease(false)}>
+                        Re-seal
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-emerald-500/50 bg-emerald-500/10 p-3 text-sm">
+                      <span className="font-medium">Scores released.</span> Every admin key is in — boards are graded on
+                      the consensus: {keyState.consensusCount} item{keyState.consensusCount === 1 ? '' : 's'} called
+                      {keyState.disputedCount > 0 && <> · {keyState.disputedCount} disputed (not counted)</>}.
+                    </div>
+                  )
                 ) : (
                   <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3">
                     <p className="min-w-40 flex-1 text-sm">
@@ -462,8 +520,14 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
                       {keyState.missing.length > 0 && (
                         <> — waiting for <span className="font-medium">{keyState.missing.join(', ')}</span></>
                       )}
-                      . Scores release the moment the last key is saved.
+                      . Scores release the moment the last key is saved
+                      {keyState.keys.length > 0 && ' — or release now and grade on the keys in so far'}.
                     </p>
+                    {keyState.keys.length > 0 && keyState.missing.length > 0 && (
+                      <Button size="sm" onClick={releaseNow}>
+                        Release scores now
+                      </Button>
+                    )}
                     {!keyState.keys.some((k) => k.email === keyState.me) && (
                       <Button size="sm" onClick={scanAnswerSheet}>
                         Scan your answer sheet

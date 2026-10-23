@@ -65,6 +65,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     rows,
     released: state.released,
+    forceReleased: state.forceReleased,
     missing: state.missing,
     roster: state.roster,
     keys: state.keys.map((k) => ({ email: k.email, count: k.itemIds.length, updatedAt: k.updatedAt })),

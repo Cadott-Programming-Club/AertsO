@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { evaluateBingo } from '@/lib/layout'
+import { GAME_ID } from '@/lib/game'
 
 // unambiguous alphabet for board codes (no I/O/0/1) — 8 chars, ~1.1e12 combos,
 // so the code doubles as the sheet's unguessable credential
@@ -59,6 +60,14 @@ export async function createBoard(ownerId: string | null) {
 // graded against the CONSENSUS: an item only counts as called when it is in
 // EVERY admin's key. Items some admins have but others don't are "disputed" —
 // surfaced to the admins so they can compare and reconcile before/after release.
+//
+// Override: an admin can set the game's forceReleased flag ("Release scores
+// now") to skip waiting on a missing admin. Grades then use the consensus of
+// the keys submitted SO FAR — with a single key that's just that key. If the
+// missing admin scans later, the consensus recomputes across both keys
+// automatically (scores can shift). The override needs at least one key —
+// with zero keys there is nothing to grade against, so the game stays sealed
+// (this also makes a stale flag inert after a new batch wipes the keys).
 
 export interface AdminKey {
   email: string
@@ -70,7 +79,8 @@ export interface AnswerKeyState {
   keys: AdminKey[] // roster admins' keys, newest first
   roster: string[] // emails of admin users known to the database
   missing: string[] // roster admins who haven't saved a key yet
-  released: boolean // true when every roster admin has a key
+  released: boolean // true when every roster admin has a key (or force-released)
+  forceReleased: boolean // true when an admin released early despite missing keys
   consensus: string[] // items in EVERY key — the graded called-set
   disputed: string[] // items in some keys but not all
 }
@@ -91,7 +101,15 @@ export async function getAnswerKeyState(): Promise<AnswerKeyState> {
     if (rec) keys.push({ email, itemIds: JSON.parse(rec.itemIds) as string[], updatedAt: rec.updatedAt })
   }
   const missing = roster.filter((email) => !byEmail.has(email))
-  const released = roster.length > 0 && missing.length === 0
+  // direct read (no row-create write on this hot path) — the game row is
+  // created by /api/game's loadRow(); a missing row just means no override
+  const gameRow = await db.aertsOGame.findUnique({
+    where: { id: GAME_ID },
+    select: { forceReleased: true },
+  })
+  const forceReleased = Boolean(gameRow?.forceReleased)
+  const allKeysIn = roster.length > 0 && missing.length === 0
+  const released = allKeysIn || (forceReleased && keys.length > 0)
 
   let consensus: string[] = []
   let disputed: string[] = []
@@ -107,7 +125,7 @@ export async function getAnswerKeyState(): Promise<AnswerKeyState> {
     disputed.sort(byOrder)
   }
 
-  return { keys, roster, missing, released, consensus, disputed }
+  return { keys, roster, missing, released, forceReleased, consensus, disputed }
 }
 
 export async function boardView(board: { id: string; code: string; layout: string; ownerId: string | null }) {
