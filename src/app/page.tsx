@@ -41,7 +41,9 @@ function AertsOApp() {
   const viewParam = params.get('view')
   const scanDeepLink = params.get('scan') // from a native-camera QR scan
   const editCodeParam = viewParam === 'edit' ? params.get('code') : null
-  const showScan = viewParam === 'scan' || Boolean(scanDeepLink) || Boolean(editCodeParam)
+  // view=edit with no code still shows the scanner (manual entry fallback)
+  // rather than an empty page
+  const showScan = viewParam === 'scan' || viewParam === 'edit' || Boolean(scanDeepLink)
   const showLogin = viewParam === 'login'
   const showAdmin = viewParam === 'admin'
 
