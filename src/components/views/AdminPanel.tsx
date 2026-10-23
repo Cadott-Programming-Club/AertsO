@@ -768,18 +768,27 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
 
 // Boards-tab verification dialog: the recorded mark grid beside the photo the
 // scanner took of the physical sheet, so an admin can confirm the read was
-// faithful. Winning lines get a green outline, marked-but-uncalled lines
-// amber (once scores have released), and spots whose item IS called per the
-// answer keys but NOT marked on the board get a dashed sky outline — if the
-// photo shows ink there, it counts (a scanner miss worth fixing).
+// faithful. Four cell categories (once any answer key exists):
+//   green solid  — winning line (after release)
+//   amber solid  — marked line with uncalled items (after release)
+//   sky dashed   — item called per the keys but NOT marked — ink there counts
+//   rose dashed  — marked item that was NOT called — doesn't count (mistake
+//                  or a phantom mark worth checking against the photo)
 function ReviewDetail({ row, released, calledIds }: { row: Row; released: boolean; calledIds: Set<string> }) {
   const marks = row.marks ?? ''
   const winSet = new Set(released ? row.winningLines.flat() : [])
   const invalidSet = new Set(released ? row.invalidLines.flat() : [])
   const itemIds = row.itemIds ?? []
-  const missed = Array.from({ length: 36 }, (_, i) => itemIds[i]).filter(
-    (id, i) => id && calledIds.has(id) && marks[i] !== '1',
-  ).length
+  const hasKeys = calledIds.size > 0
+  let missed = 0 // called but not marked
+  let bogus = 0 // marked but not called
+  for (let i = 0; i < 36; i++) {
+    const id = itemIds[i]
+    if (!id || !hasKeys) continue
+    const marked = marks[i] === '1'
+    if (calledIds.has(id) && !marked) missed++
+    if (!calledIds.has(id) && marked) bogus++
+  }
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm">
@@ -787,10 +796,12 @@ function ReviewDetail({ row, released, calledIds }: { row: Row; released: boolea
         {' · '}
         {row.ownerEmail ?? 'unclaimed'}
         {row.submittedAt ? ` · scanned ${new Date(row.submittedAt).toLocaleString()}` : ' · not scanned'}
-        {calledIds.size > 0 && (
+        {hasKeys && (
           <>
             {' · '}
             <span className="font-medium text-sky-600 dark:text-sky-400">{missed} called but not marked</span>
+            {' · '}
+            <span className="font-medium text-rose-600 dark:text-rose-400">{bogus} marked but not called</span>
           </>
         )}
       </p>
@@ -817,7 +828,8 @@ function ReviewDetail({ row, released, calledIds }: { row: Row; released: boolea
               const marked = marks[i] === '1'
               const inWin = winSet.has(i)
               const inInvalid = invalidSet.has(i)
-              const calledNotMarked = Boolean(itemIds[i] && calledIds.has(itemIds[i]) && !marked)
+              const calledNotMarked = hasKeys && Boolean(itemIds[i] && calledIds.has(itemIds[i]) && !marked)
+              const markedNotCalled = hasKeys && marked && Boolean(itemIds[i]) && !calledIds.has(itemIds[i])
               return (
                 <div
                   key={i}
@@ -829,11 +841,13 @@ function ReviewDetail({ row, released, calledIds }: { row: Row; released: boolea
                       ? 'border-2 border-emerald-500'
                       : inInvalid
                         ? 'border-2 border-amber-500'
-                        : calledNotMarked
-                          ? 'border-2 border-dashed border-sky-500'
-                          : marked
-                            ? 'border-primary'
-                            : ''
+                        : markedNotCalled
+                          ? 'border-2 border-dashed border-rose-500'
+                          : calledNotMarked
+                            ? 'border-2 border-dashed border-sky-500'
+                            : marked
+                              ? 'border-primary'
+                              : ''
                   }`}
                 >
                   <span className="line-clamp-4">{row.cells[i]}</span>
@@ -843,11 +857,11 @@ function ReviewDetail({ row, released, calledIds }: { row: Row; released: boolea
           </div>
           <p className="text-xs text-muted-foreground">
             Compare the grid against the scan photo to verify the read.{' '}
-            {calledIds.size > 0 &&
-              'Blue dashed = called item the player did NOT mark — if the photo shows ink there, it counts. '}
+            {hasKeys &&
+              'Blue dashed = called but not marked — ink there counts. Rose dashed = marked but not called — does not count. '}
             {released
               ? 'Green outline = winning line · amber = marked line with uncalled items.'
-              : 'Winning/amber outlines appear once scores release.'}
+              : 'Green/amber outlines appear once scores release.'}
           </p>
         </div>
       </div>
