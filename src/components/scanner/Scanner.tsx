@@ -621,9 +621,28 @@ export function Scanner({
           ) : (
             <p className="text-sm text-muted-foreground">Marks saved. Bingo status appears once admins scan in their answer keys.</p>
           )}
-          <Button variant="outline" onClick={onDone}>
-            Done
-          </Button>
+          {!savedKey && (
+            <p className="text-xs text-muted-foreground">
+              Playing on? Scan this sheet again anytime — your marks update on every scan, and bingo is re-checked
+              against the admins&apos; keys each time.
+            </p>
+          )}
+          <div className="flex flex-wrap gap-3">
+            {!savedKey && (
+              <Button
+                onClick={() => {
+                  setSubmitResult(null)
+                  setOutcome(null)
+                  void startCamera()
+                }}
+              >
+                Scan again / update my marks
+              </Button>
+            )}
+            <Button variant="outline" onClick={onDone}>
+              Done
+            </Button>
+          </div>
         </CardContent>
       </Card>
     )

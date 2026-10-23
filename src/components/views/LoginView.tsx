@@ -107,11 +107,15 @@ export function LoginView({ onSuccess, embedded = false }: { onSuccess: (me: Me)
             </Button>
             {/* Real email flow only — dev mode surfaces the code directly instead. */}
             {!devCode && (
-              <div className="flex items-start gap-2.5 rounded-md border bg-muted/50 px-3 py-2.5">
-                <Badge variant="secondary" className="mt-0.5 shrink-0">Check spam</Badge>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Codes are sent out the moment you request one. If yours isn&apos;t in your inbox or spam
-                  folder, contact Brody.
+              <div className="flex items-start gap-2.5 rounded-md border border-amber-500/60 bg-amber-500/15 px-3 py-2.5">
+                <Badge
+                  className="mt-0.5 shrink-0 border-transparent bg-amber-500/30 text-amber-800 dark:bg-amber-500/30 dark:text-amber-200"
+                >
+                  Check spam
+                </Badge>
+                <p className="text-xs leading-relaxed text-amber-900 dark:text-amber-100">
+                  Codes go out the moment you request one. If yours isn&apos;t in your inbox or spam folder,{' '}
+                  <span className="font-semibold">contact Brody</span>.
                 </p>
               </div>
             )}

@@ -199,6 +199,9 @@ function AertsOApp() {
                     <CardTitle className="text-base">My boards</CardTitle>
                   </CardHeader>
                   <CardContent className="flex flex-col gap-2">
+                    <p className="text-xs text-muted-foreground">
+                      Scan as often as you like — your marks update on each scan, and bingo is re-checked every time.
+                    </p>
                     {myBoards.map((b) => (
                       <div key={b.id} className="flex flex-wrap items-center justify-between gap-2 border rounded-lg px-3 py-2">
                         <span className="font-mono text-sm">Board {formatCode(b.code)}</span>
@@ -206,7 +209,7 @@ function AertsOApp() {
                           {b.marks ? `${b.marks.split('').filter((c) => c === '1').length} marks scanned` : 'not scanned yet'}
                         </span>
                         <Button size="sm" variant="outline" onClick={() => openUrl(`/?scan=${b.code}`)}>
-                          Update marks
+                          Scan again / edit marks
                         </Button>
                       </div>
                     ))}

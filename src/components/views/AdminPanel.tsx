@@ -159,6 +159,22 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
 
   const printBatch = async () => {
     setMsg('')
+    // Generating a batch wipes the previous game — make that explicit before
+    // the old boards/scans/keys are gone.
+    const existingBoards = rows.length
+    const existingKeys = release?.keys.length ?? 0
+    if (existingBoards > 0 || existingKeys > 0) {
+      const parts: string[] = []
+      if (existingBoards > 0) parts.push(`${existingBoards} board${existingBoards === 1 ? '' : 's'} and their scans`)
+      if (existingKeys > 0) parts.push(`${existingKeys} answer key${existingKeys === 1 ? '' : 's'}`)
+      if (
+        !window.confirm(
+          `Generate a fresh set? This starts a new game — it clears the ${parts.join(' and ')} from the last one.`,
+        )
+      ) {
+        return
+      }
+    }
     const res = await fetch('/api/admin/boards', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -172,8 +188,17 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
     const codes = json.boards.map((b: { code: string }) => b.code).join(',')
     setLastIds(codes)
     openPrint(`/?print=batch&ids=${codes}`)
-    setMsg(`Generated ${json.boards.length} boards — opening the print view.`)
+    const clearedBits: string[] = []
+    if (json.clearedBoards > 0) clearedBits.push(`${json.clearedBoards} old board${json.clearedBoards === 1 ? '' : 's'}`)
+    if (json.clearedSubmissions > 0) clearedBits.push(`${json.clearedSubmissions} scan${json.clearedSubmissions === 1 ? '' : 's'}`)
+    if (json.clearedKeys > 0) clearedBits.push(`${json.clearedKeys} answer key${json.clearedKeys === 1 ? '' : 's'}`)
+    setMsg(
+      `Generated ${json.boards.length} fresh board${json.boards.length === 1 ? '' : 's'}${
+        clearedBits.length ? ` — cleared ${clearedBits.join(', ')}` : ''
+      } — opening the print view.`,
+    )
     loadSubs()
+    loadKeys()
   }
 
   const reprintLast = () => {
@@ -278,6 +303,11 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
               Each QR contains its board&apos;s code, so a phone camera scan opens the site with that board loaded.
               Print one answer key sheet per admin — each of you inks your own copy as items are drawn, then scans it in.
             </p>
+            <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
+              <span className="font-medium">Generating a batch starts a new game</span> — all existing boards, their
+              scans, and the answer keys are cleared first, so players&apos; &quot;My boards&quot; lists start fresh.
+              You&apos;ll be asked to confirm before anything is cleared.
+            </div>
           </TabsContent>
 
           <TabsContent value="keys" className="flex flex-col gap-4 pt-3">
