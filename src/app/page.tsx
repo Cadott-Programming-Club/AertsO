@@ -1,10 +1,13 @@
 'use client'
 
 // AertsO — paper bingo you verify with your phone.
-// Single-route app: views switch via search params (?view=scan, ?print=…, ?scan=CODE).
-// ?scan=CODE is the deep link baked into every printed QR — a native phone-camera
-// scan opens the site straight into the sheet scanner (camera ready, board NOT
-// auto-entered — the sheet is scanned so the marks are read off the paper).
+// Single-route app: views switch via search params (?view=scan|edit|admin|login,
+// ?print=…, ?scan=CODE). ?scan=CODE is the deep link baked into every printed
+// QR — a native phone-camera scan opens the site straight into the sheet
+// scanner (camera ready, board NOT auto-entered — the sheet is scanned so the
+// marks are read off the paper). ?view=edit&code=… opens a specific board in
+// the tap-grid editor with its current marks pre-filled (the "edit my marks"
+// view from the homepage's My boards card).
 
 import { Suspense, useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
@@ -37,7 +40,8 @@ function AertsOApp() {
   const answerStamp = params.get('astamp') ?? undefined
   const viewParam = params.get('view')
   const scanDeepLink = params.get('scan') // from a native-camera QR scan
-  const showScan = viewParam === 'scan' || Boolean(scanDeepLink)
+  const editCodeParam = viewParam === 'edit' ? params.get('code') : null
+  const showScan = viewParam === 'scan' || Boolean(scanDeepLink) || Boolean(editCodeParam)
   const showLogin = viewParam === 'login'
   const showAdmin = viewParam === 'admin'
 
@@ -146,6 +150,7 @@ function AertsOApp() {
           <Scanner
             user={me ? { email: me.email, isAdmin: me.isAdmin } : null}
             initialScan={scanDeepLink}
+            editCode={editCodeParam}
             onDone={() => {
               refreshBoards()
               openUrl('/')
@@ -274,7 +279,7 @@ function AertsOApp() {
                         <span className="text-xs text-muted-foreground">
                           {b.marks ? `${b.marks.split('').filter((c) => c === '1').length} marks scanned` : 'not scanned yet'}
                         </span>
-                        <Button size="sm" variant="outline" onClick={() => openUrl(`/?scan=${b.code}`)}>
+                        <Button size="sm" variant="outline" onClick={() => openUrl(`/?view=edit&code=${b.code}`)}>
                           Scan again / edit marks
                         </Button>
                       </div>

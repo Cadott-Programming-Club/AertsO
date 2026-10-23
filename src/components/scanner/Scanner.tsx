@@ -53,11 +53,13 @@ interface ScanOutcome {
 export function Scanner({
   user,
   initialScan,
+  editCode,
   onDone,
   loginSlot,
 }: {
   user: { email: string; isAdmin: boolean } | null
   initialScan?: string | null
+  editCode?: string | null
   onDone: () => void
   loginSlot: React.ReactNode
 }) {
@@ -99,6 +101,12 @@ export function Scanner({
   // decode — auto-dumping an unframed player into the manual grid is exactly
   // the "it only lets me punch it in" bug the QR deep-link flow had.
   const UNFRAMED_LIMIT = 14
+
+  // ---------- helpers ----------
+  // 36-cell bitmap ('1'/'0') -> booleans for the tap grid. Anything malformed
+  // falls back to a blank grid — never crashes the editor.
+  const marksFromString = (s: unknown): boolean[] =>
+    typeof s === 'string' && /^[01]{36}$/.test(s) ? s.split('').map((c) => c === '1') : new Array(36).fill(false)
 
   const stopCamera = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current)
@@ -345,6 +353,57 @@ export function Scanner({
     void startCamera()
   }, [initialScan])
 
+  // ---------- edit-marks deep link (?view=edit&code=… from "My boards") ----------
+  // Loads THAT board straight into the confirm grid with its CURRENT marks
+  // pre-filled — no camera involved. This is the "edit my marks" view: tap to
+  // fix anything, submit, and the board updates (latest scan wins).
+  // NOTE: no async-IIFE here — Turbopack's anonymous-function naming transform
+  // rewrites void (async () => {...})() into an uncalled expression, silently
+  // dropping the invocation. A named async function called with void load()
+  // compiles to a real call (same shape as void startCamera() above).
+  const editCodeRef = useRef<string | null>(null)
+  useEffect(() => {
+    const raw = editCode?.trim()
+    if (!raw || editCodeRef.current === raw) return
+    editCodeRef.current = raw
+    setPhase('processing')
+    setStatus('Loading your board…')
+    const loadBoard = async () => {
+      try {
+        const res = await fetch(`/api/boards/lookup?code=${encodeURIComponent(raw)}`)
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          setManualError(json.error ?? 'No board with that code.')
+          setPhase('choose')
+          setStatus('')
+          return
+        }
+        const existing = marksFromString(json.marks)
+        const had = typeof json.marks === 'string' && /^[01]{36}$/.test(json.marks)
+        runOutcome({
+          kind: 'board',
+          board: json.board as BoardData,
+          marks: existing,
+          confidence: new Array(36).fill(0),
+          aligned: false,
+          findersFound: 0,
+          photo: '',
+        })
+        setStatus(
+          had
+            ? 'Your saved marks are shown below — tap anything that\u2019s wrong, then submit to update your board.'
+            : 'Board found — tap your marked spaces below, then submit.',
+        )
+      } catch {
+        setManualError('Lookup failed — check your connection and try again.')
+        setPhase('choose')
+        setStatus('')
+      }
+    }
+    void loadBoard()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount effect; setters are stable
+  }, [editCode])
+
   // ---------- upload ----------
   const onUpload = async (file: File) => {
     setPhase('processing')
@@ -371,8 +430,9 @@ export function Scanner({
 
   // ---------- manual code entry ----------
   // The printed sheet's QR is the primary path; the human code under it is the
-  // fallback. Marks start blank and are tapped in the confirm grid by hand —
-  // there's no photo to sample, so the player's taps ARE the record.
+  // fallback. Marks start from the board's CURRENT saved marks (if any) so a
+  // re-entry never silently wipes what was already scanned — there's no photo
+  // to sample, so the player's taps ARE the record.
   const onManualCode = async () => {
     const code = manualCode.trim()
     if (!code || manualBusy) return
@@ -385,16 +445,21 @@ export function Scanner({
         setManualError(json.error ?? 'No board with that code.')
         return
       }
+      const had = typeof json.marks === 'string' && /^[01]{36}$/.test(json.marks)
       runOutcome({
         kind: 'board',
         board: json.board as BoardData,
-        marks: new Array(36).fill(false),
+        marks: marksFromString(json.marks),
         confidence: new Array(36).fill(0),
         aligned: false,
         findersFound: 0,
         photo: '',
       })
-      setStatus('Board found — tap your marked spaces below, then submit.')
+      setStatus(
+        had
+          ? 'Your saved marks are shown below — tap anything that\u2019s wrong, then submit to update your board.'
+          : 'Board found — tap your marked spaces below, then submit.',
+      )
     } catch {
       setManualError('Lookup failed — check your connection and try again.')
     } finally {
