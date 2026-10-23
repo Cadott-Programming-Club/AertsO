@@ -107,16 +107,22 @@ export function PrintView({
             <AnswerSheet items={items!} origin={typeof window !== 'undefined' ? window.location.origin : ''} stamp={answerStamp} />
           ) : null
         ) : boards ? (
-          boards.map((b) => (
-            <BoardSheet
-              key={b.code}
-              cells={b.cells}
-              code={b.code}
-              qrPayload={`${typeof window !== 'undefined' ? window.location.origin : ''}/?scan=${b.code}`}
-              stamp={stamp}
-              rules={game?.rules}
-            />
-          ))
+          boards.length === 0 ? (
+            <p className="text-center text-muted-foreground py-10">
+              No boards on file yet — generate a batch in the admin panel&apos;s Print tab first.
+            </p>
+          ) : (
+            boards.map((b) => (
+              <BoardSheet
+                key={b.code}
+                cells={b.cells}
+                code={b.code}
+                qrPayload={`${typeof window !== 'undefined' ? window.location.origin : ''}/?scan=${b.code}`}
+                stamp={stamp}
+                rules={game?.rules}
+              />
+            ))
+          )
         ) : (
           <p className="text-center text-muted-foreground py-10">Loading sheets…</p>
         )}

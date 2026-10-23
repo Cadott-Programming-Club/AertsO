@@ -279,11 +279,12 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
   }
 
   const reprintLast = () => {
-    if (!lastIds) {
-      setMsg('Generate a batch first.')
-      return
-    }
-    openPrint(`/?print=batch&ids=${lastIds}`)
+    // lastIds lives only in memory — a reload wipes it, which used to make
+    // this button say "Generate a batch first" while the database clearly
+    // still held the batch (and generating would wipe it!). Since a new
+    // batch clears the old boards, everything on file IS the last batch:
+    // with no ids the print route returns every board on file.
+    openPrint(lastIds ? `/?print=batch&ids=${lastIds}` : '/?print=batch')
   }
 
   const printAnswers = () => openPrint('/?print=answers')

@@ -6,7 +6,9 @@ import { normalizeCode } from '@/lib/layout'
 
 // Admin-only print data. Players never print their own paper — the club
 // generates and prints every sheet — so the print view is gated server-side.
-//   GET ?ids=CODE1,CODE2  -> boards (cells for BoardSheet rendering)
+//   GET ?ids=CODE1,CODE2  -> those boards (cells for BoardSheet rendering)
+//   GET (no ids)          -> every board on file (= the current batch;
+//                            used by "Reprint last batch" after a reload)
 //   GET ?answers=1        -> active item pool (AnswerSheet rendering)
 export async function GET(req: Request) {
   const user = await getSessionUser()
@@ -26,7 +28,12 @@ export async function GET(req: Request) {
     .map((s) => normalizeCode(s))
     .filter((v): v is string => Boolean(v))
   if (ids.length === 0) {
-    return NextResponse.json({ error: 'No boards requested.' }, { status: 400 })
+    // No ids = the whole current batch. Generating a new batch clears the
+    // old boards, so everything on file IS the last batch — this is what
+    // "Reprint last batch" uses after a page reload, when the in-memory
+    // board ids are gone but the boards are still in the database.
+    const all = await db.aertsOBoard.findMany({ orderBy: { createdAt: 'asc' } })
+    return NextResponse.json({ boards: await Promise.all(all.map((b) => boardView(b))) })
   }
 
   const boards: { id: string; code: string; ownerId: string | null; cells: string[]; itemIds: string[] }[] = []
