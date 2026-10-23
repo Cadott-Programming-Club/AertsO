@@ -769,11 +769,11 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
 // Boards-tab verification dialog: the recorded mark grid beside the photo the
 // scanner took of the physical sheet, so an admin can confirm the read was
 // faithful. Four cell categories (once any answer key exists):
-//   green solid  — winning line (after release)
-//   amber solid  — marked line with uncalled items (after release)
-//   sky dashed   — item called per the keys but NOT marked — ink there counts
-//   rose dashed  — marked item that was NOT called — doesn't count (mistake
-//                  or a phantom mark worth checking against the photo)
+//   green solid   — winning line (after release)
+//   amber solid   — marked line with uncalled items (after release)
+//   sky dashed    — item called per the keys but NOT marked — ink there counts
+//   violet dashed — marked item that was NOT called — doesn't count (mistake
+//                   or a phantom mark worth checking against the photo)
 function ReviewDetail({ row, released, calledIds }: { row: Row; released: boolean; calledIds: Set<string> }) {
   const marks = row.marks ?? ''
   const winSet = new Set(released ? row.winningLines.flat() : [])
@@ -801,7 +801,7 @@ function ReviewDetail({ row, released, calledIds }: { row: Row; released: boolea
             {' · '}
             <span className="font-medium text-sky-600 dark:text-sky-400">{missed} called but not marked</span>
             {' · '}
-            <span className="font-medium text-rose-600 dark:text-rose-400">{bogus} marked but not called</span>
+            <span className="font-medium text-violet-600 dark:text-violet-400">{bogus} marked but not called</span>
           </>
         )}
       </p>
@@ -842,7 +842,7 @@ function ReviewDetail({ row, released, calledIds }: { row: Row; released: boolea
                       : inInvalid
                         ? 'border-2 border-amber-500'
                         : markedNotCalled
-                          ? 'border-2 border-dashed border-rose-500'
+                          ? 'border-2 border-dashed border-violet-500'
                           : calledNotMarked
                             ? 'border-2 border-dashed border-sky-500'
                             : marked
@@ -858,7 +858,7 @@ function ReviewDetail({ row, released, calledIds }: { row: Row; released: boolea
           <p className="text-xs text-muted-foreground">
             Compare the grid against the scan photo to verify the read.{' '}
             {hasKeys &&
-              'Blue dashed = called but not marked — ink there counts. Rose dashed = marked but not called — does not count. '}
+              'Blue dashed = called but not marked — ink there counts. Violet dashed = marked but not called — does not count. '}
             {released
               ? 'Green outline = winning line · amber = marked line with uncalled items.'
               : 'Green/amber outlines appear once scores release.'}

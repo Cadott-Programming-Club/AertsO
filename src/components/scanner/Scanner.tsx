@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import jsQR from 'jsqr'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -87,6 +88,10 @@ export function Scanner({
   // 500ms while the user frames the sheet, and the board layout never changes.
   const boardCacheRef = useRef<Map<string, BoardData>>(new Map())
   const answersCacheRef = useRef<{ id: string; text: string }[] | null>(null)
+  // manual board-code entry (fallback when the camera/QR can't cooperate)
+  const [manualCode, setManualCode] = useState('')
+  const [manualError, setManualError] = useState('')
+  const [manualBusy, setManualBusy] = useState(false)
   // consecutive frames where the QR decoded but the sheet wasn't framed yet
   const unframedRef = useRef(0)
   // after this many unframed tries (~7s) we surface an explicit "tap your marks
@@ -364,6 +369,39 @@ export function Scanner({
     }
   }
 
+  // ---------- manual code entry ----------
+  // The printed sheet's QR is the primary path; the human code under it is the
+  // fallback. Marks start blank and are tapped in the confirm grid by hand —
+  // there's no photo to sample, so the player's taps ARE the record.
+  const onManualCode = async () => {
+    const code = manualCode.trim()
+    if (!code || manualBusy) return
+    setManualError('')
+    setManualBusy(true)
+    try {
+      const res = await fetch(`/api/boards/lookup?code=${encodeURIComponent(code)}`)
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setManualError(json.error ?? 'No board with that code.')
+        return
+      }
+      runOutcome({
+        kind: 'board',
+        board: json.board as BoardData,
+        marks: new Array(36).fill(false),
+        confidence: new Array(36).fill(0),
+        aligned: false,
+        findersFound: 0,
+        photo: '',
+      })
+      setStatus('Board found — tap your marked spaces below, then submit.')
+    } catch {
+      setManualError('Lookup failed — check your connection and try again.')
+    } finally {
+      setManualBusy(false)
+    }
+  }
+
   // ---------- submit ----------
   const submit = async () => {
     if (!user) return
@@ -430,6 +468,29 @@ export function Scanner({
               </Button>
             </label>
           </div>
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <Input
+                placeholder="Or type the board code (e.g. K7QM-X2P9)"
+                value={manualCode}
+                maxLength={9}
+                autoCapitalize="characters"
+                autoCorrect="off"
+                spellCheck={false}
+                onChange={(e) => setManualCode(e.target.value.toUpperCase())}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void onManualCode()
+                }}
+              />
+              {manualError && <p className="text-destructive text-sm mt-1">{manualError}</p>}
+            </div>
+            <Button variant="secondary" disabled={manualBusy} onClick={() => void onManualCode()}>
+              {manualBusy ? 'Looking up…' : 'Look up'}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            No camera? Type the code printed under the QR — you&apos;ll tap your marked spaces in by hand.
+          </p>
           {status && <p className="text-sm text-muted-foreground">{status}</p>}
         </CardContent>
       </Card>
