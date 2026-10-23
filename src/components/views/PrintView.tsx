@@ -30,6 +30,7 @@ export function PrintView({
   const [boards, setBoards] = useState<BoardView[] | null>(null)
   const [items, setItems] = useState<{ id: string; text: string }[] | null>(null)
   const [error, setError] = useState('')
+  const [game, setGameState] = useState<{ rules: string; endsAt: string | null } | null>(null)
 
   const isAnswers = printParam === 'answers'
   const ids = isAnswers ? [] : printParam === 'batch' ? (idsParam ?? '').split(',').filter(Boolean) : [printParam]
@@ -59,6 +60,11 @@ export function PrintView({
       })
       .then((j) => setBoards(j.boards))
       .catch((e) => setError(e.message))
+    // game settings (public) — rules + end date print on every board sheet
+    fetch('/api/game')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => j && setGameState({ rules: j.rules as string, endsAt: (j.endsAt ?? null) as string | null }))
+      .catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ids derive from printParam/idsParam
   }, [printParam, idsParam])
 
@@ -107,6 +113,8 @@ export function PrintView({
               code={b.code}
               qrPayload={`${typeof window !== 'undefined' ? window.location.origin : ''}/?scan=${b.code}`}
               stamp={stamp}
+              rules={game?.rules}
+              endsAt={game?.endsAt}
             />
           ))
         ) : (

@@ -3,7 +3,7 @@
 // Admin panel: shared item pool, batch printing, master keys (one per admin,
 // with comparison + automatic score release), live submissions.
 
-import { useEffect, useState, useCallback } from 'react'
+import { Fragment, useEffect, useState, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { formatCode } from '@/lib/layout'
+import { formatCode, COLS } from '@/lib/layout'
 import type { Me } from './LoginView'
 
 interface Item {
@@ -23,8 +23,11 @@ interface Item {
 interface Row {
   code: string
   ownerEmail: string | null
+  marks: string | null
   markedCount: number
   submittedAt: string | null
+  hasPhoto?: boolean
+  photo?: string | null
   bingo: boolean
   winningLines: number[][]
   invalidLines: number[][]
@@ -52,9 +55,21 @@ interface KeyState extends ReleaseInfo {
   me: string
   items: CompareItem[]
 }
+interface GameInfo {
+  rules: string
+  endsAt: string | null
+  ended: boolean
+}
 
 function initial(email: string) {
   return (email.split('@')[0] ?? '?').slice(0, 1).toUpperCase()
+}
+
+// datetime-local wants YYYY-MM-DDTHH:mm in the browser's own timezone
+function toLocalInput(iso: string) {
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string) => void }) {
@@ -68,6 +83,14 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
   const [lastIds, setLastIds] = useState('')
   const [dbReady, setDbReady] = useState<boolean | null>(null)
   const [settingUp, setSettingUp] = useState(false)
+  // game settings (rules + end date) and their draft form
+  const [game, setGame] = useState<GameInfo | null>(null)
+  const [rulesDraft, setRulesDraft] = useState('')
+  const [endsDraft, setEndsDraft] = useState('')
+  // boards-tab review expansion (per-board detail incl. the scan photo)
+  const [reviewCode, setReviewCode] = useState<string | null>(null)
+  const [reviewRow, setReviewRow] = useState<Row | null>(null)
+  const [reviewLoading, setReviewLoading] = useState(false)
 
   const probeDb = useCallback(async () => {
     try {
@@ -110,12 +133,22 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
     if (res.ok) setKeyState(await res.json())
   }, [])
 
+  const loadGame = useCallback(async () => {
+    const res = await fetch('/api/game')
+    if (!res.ok) return
+    const json: GameInfo = await res.json()
+    setGame(json)
+    setRulesDraft(json.rules)
+    setEndsDraft(json.endsAt ? toLocalInput(json.endsAt) : '')
+  }, [])
+
   useEffect(() => {
     loadItems()
     loadSubs()
     loadKeys()
+    loadGame()
     probeDb()
-  }, [loadItems, loadSubs, loadKeys, probeDb])
+  }, [loadItems, loadSubs, loadKeys, loadGame, probeDb])
 
   const runSetup = async () => {
     setMsg('')
@@ -169,7 +202,7 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
       if (existingKeys > 0) parts.push(`${existingKeys} answer key${existingKeys === 1 ? '' : 's'}`)
       if (
         !window.confirm(
-          `Generate a fresh set? This starts a new game — it clears the ${parts.join(' and ')} from the last one.`,
+          `Generate a fresh set? This starts a new game — it clears the ${parts.join(' and ')} from the last one, and a passed end date resets.`,
         )
       ) {
         return
@@ -195,10 +228,54 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
     setMsg(
       `Generated ${json.boards.length} fresh board${json.boards.length === 1 ? '' : 's'}${
         clearedBits.length ? ` — cleared ${clearedBits.join(', ')}` : ''
-      } — opening the print view.`,
+      } — opening the print view.${json.gameClockReset ? ' The passed end date was cleared — set a new one in the Game tab.' : ''}`,
     )
     loadSubs()
     loadKeys()
+    loadGame()
+  }
+
+  const saveGame = async () => {
+    setMsg('')
+    // datetime-local is browser-local — convert to ISO here so the server
+    // never re-interprets the moment in its own timezone
+    const endsAt = endsDraft ? new Date(endsDraft).toISOString() : null
+    const res = await fetch('/api/game', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rules: rulesDraft, endsAt }),
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setMsg(json.error ?? 'Could not save game settings.')
+      return
+    }
+    setGame(json as GameInfo)
+    setMsg(
+      `Game settings saved${
+        (json as GameInfo).endsAt ? ` — the game ends ${new Date((json as GameInfo).endsAt!).toLocaleString()}` : ' — no end date set'
+      }.`,
+    )
+  }
+
+  const openReview = async (code: string) => {
+    if (reviewCode === code) {
+      setReviewCode(null)
+      setReviewRow(null)
+      return
+    }
+    setReviewCode(code)
+    setReviewRow(null)
+    setReviewLoading(true)
+    try {
+      const res = await fetch(`/api/admin/submissions?code=${code}`)
+      if (res.ok) {
+        const json = await res.json()
+        setReviewRow(json.row as Row)
+      }
+    } finally {
+      setReviewLoading(false)
+    }
   }
 
   const reprintLast = () => {
@@ -222,6 +299,13 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
         <CardTitle className="flex flex-wrap items-center gap-2">
           Admin
           <Badge variant="secondary">{me.email}</Badge>
+          {game?.endsAt && (
+            <Badge variant={game.ended ? 'destructive' : 'secondary'}>
+              {game.ended
+                ? `ended ${new Date(game.endsAt).toLocaleDateString()}`
+                : `ends ${new Date(game.endsAt).toLocaleDateString()}`}
+            </Badge>
+          )}
           {release && (
             <Badge variant={release.released ? 'default' : 'outline'}>
               {release.released
@@ -244,8 +328,9 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
             </Button>
           </div>
         )}
-        <Tabs defaultValue="items">
+        <Tabs defaultValue="game">
           <TabsList className="flex-wrap h-auto">
+            <TabsTrigger value="game">Game</TabsTrigger>
             <TabsTrigger value="items">Item pool</TabsTrigger>
             <TabsTrigger value="print">Print</TabsTrigger>
             <TabsTrigger value="keys">
@@ -261,6 +346,55 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
               {release?.released && bingos > 0 && <span className="ml-1.5 rounded-full bg-primary text-primary-foreground text-[10px] px-1.5">{bingos}</span>}
             </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="game" className="flex flex-col gap-4 pt-3">
+            <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+              {game?.ended ? (
+                <span className="text-amber-600 dark:text-amber-400">
+                  <span className="font-medium">The game has ended</span> — {new Date(game.endsAt!).toLocaleString()}.
+                  Player submissions are locked (admins can still fix marks). Generate a new batch to start fresh.
+                </span>
+              ) : game?.endsAt ? (
+                <span>
+                  <span className="font-medium">Game ends {new Date(game.endsAt).toLocaleString()}</span> — after that,
+                  players can&apos;t change their marks. Rescanning the same marks still works so they can check results.
+                </span>
+              ) : (
+                <span className="text-muted-foreground">
+                  No end date set — the game runs until you generate a new batch. Set a deadline (a week out is
+                  typical) and boards lock after it passes.
+                </span>
+              )}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="game-rules">Club rules — shown on the website and printed on every sheet</Label>
+              <Textarea
+                id="game-rules"
+                rows={10}
+                value={rulesDraft}
+                onChange={(e) => setRulesDraft(e.target.value)}
+                placeholder={
+                  'One line per rule, or free text.\nExample: Boards must be scanned by the deadline.\nPrizes drawn from verified bingos.'
+                }
+              />
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex flex-col gap-1.5 w-64">
+                <Label htmlFor="game-ends">Game ends (optional)</Label>
+                <Input id="game-ends" type="datetime-local" value={endsDraft} onChange={(e) => setEndsDraft(e.target.value)} />
+              </div>
+              <Button onClick={saveGame}>Save game settings</Button>
+              {endsDraft && (
+                <Button variant="outline" onClick={() => setEndsDraft('')}>
+                  Clear end date
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              A passed end date clears automatically when you generate a new batch. Rules show on the homepage and at
+              the bottom of every printed sheet — keep it to roughly a paragraph so it fits the page.
+            </p>
+          </TabsContent>
 
           <TabsContent value="items" className="flex flex-col gap-3 pt-3">
             <div className="flex flex-col gap-1.5">
@@ -458,37 +592,58 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
                     <th className="px-3 py-2 font-medium">Marks</th>
                     <th className="px-3 py-2 font-medium">Status</th>
                     <th className="px-3 py-2 font-medium">Scanned</th>
+                    <th className="px-3 py-2 font-medium">Verify</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((r) => (
-                    <tr key={r.code} className="border-t">
-                      <td className="px-3 py-2 font-mono">{formatCode(r.code)}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{r.ownerEmail ?? <span className="text-muted-foreground/50">unclaimed</span>}</td>
-                      <td className="px-3 py-2">{r.markedCount || '—'}</td>
-                      <td className="px-3 py-2">
-                        {release && !release.released ? (
-                          r.submittedAt ? (
-                            <span className="text-muted-foreground">sealed until release</span>
+                    <Fragment key={r.code}>
+                      <tr className="border-t">
+                        <td className="px-3 py-2 font-mono">{formatCode(r.code)}</td>
+                        <td className="px-3 py-2 text-muted-foreground">{r.ownerEmail ?? <span className="text-muted-foreground/50">unclaimed</span>}</td>
+                        <td className="px-3 py-2">{r.markedCount || '—'}</td>
+                        <td className="px-3 py-2">
+                          {release && !release.released ? (
+                            r.submittedAt ? (
+                              <span className="text-muted-foreground">sealed until release</span>
+                            ) : (
+                              <span className="text-muted-foreground/50">not scanned</span>
+                            )
+                          ) : r.bingo ? (
+                            <span className="text-emerald-600 dark:text-emerald-400 font-medium">Bingo ✓</span>
+                          ) : r.invalidLines.length > 0 ? (
+                            <span className="text-amber-600 dark:text-amber-400">Review — marked line with uncalled items</span>
+                          ) : r.submittedAt ? (
+                            <span className="text-muted-foreground">no bingo</span>
                           ) : (
                             <span className="text-muted-foreground/50">not scanned</span>
-                          )
-                        ) : r.bingo ? (
-                          <span className="text-emerald-600 dark:text-emerald-400 font-medium">Bingo ✓</span>
-                        ) : r.invalidLines.length > 0 ? (
-                          <span className="text-amber-600 dark:text-amber-400">Review — marked line with uncalled items</span>
-                        ) : r.submittedAt ? (
-                          <span className="text-muted-foreground">no bingo</span>
-                        ) : (
-                          <span className="text-muted-foreground/50">not scanned</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-muted-foreground text-xs">{r.submittedAt ? new Date(r.submittedAt).toLocaleString() : '—'}</td>
-                    </tr>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground text-xs">{r.submittedAt ? new Date(r.submittedAt).toLocaleString() : '—'}</td>
+                        <td className="px-3 py-2">
+                          <Button size="sm" variant="outline" disabled={!r.marks} onClick={() => void openReview(r.code)}>
+                            {reviewCode === r.code ? 'Hide' : 'Verify'}
+                          </Button>
+                        </td>
+                      </tr>
+                      {reviewCode === r.code && (
+                        <tr className="bg-muted/30">
+                          <td colSpan={6} className="px-3 py-4">
+                            {reviewLoading ? (
+                              <p className="text-sm text-muted-foreground">Loading the scan…</p>
+                            ) : reviewRow ? (
+                              <ReviewDetail row={reviewRow} released={Boolean(release?.released)} />
+                            ) : (
+                              <p className="text-sm text-muted-foreground">No details available.</p>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   ))}
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
+                      <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
                         No boards yet — generate a batch in Print.
                       </td>
                     </tr>
@@ -501,5 +656,63 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
         {msg && <p className="text-sm text-muted-foreground mt-3">{msg}</p>}
       </CardContent>
     </Card>
+  )
+}
+
+// Boards-tab verification view: the recorded mark grid side-by-side with the
+// photo the scanner took of the physical sheet, so an admin can confirm the
+// read was faithful. Winning lines get a green outline, marked-but-uncalled
+// lines amber (only once scores have released).
+function ReviewDetail({ row, released }: { row: Row; released: boolean }) {
+  const marks = row.marks ?? ''
+  const winSet = new Set(released ? row.winningLines.flat() : [])
+  const invalidSet = new Set(released ? row.invalidLines.flat() : [])
+  return (
+    <div className="flex flex-col md:flex-row gap-4">
+      {row.photo ? (
+        <img src={row.photo} alt="Scan photo" className="w-full md:w-64 rounded-lg border bg-black" />
+      ) : (
+        <div className="md:w-64 text-xs text-muted-foreground">
+          No scan photo on file{row.submittedAt ? ' (submitted before photos were kept).' : ' — not scanned yet.'}
+        </div>
+      )}
+      <div className="flex-1 flex flex-col gap-2">
+        <p className="text-sm">
+          <span className="font-medium">{row.markedCount} marked</span>
+          {' · '}
+          {row.ownerEmail ?? 'unclaimed'}
+          {row.submittedAt ? ` · scanned ${new Date(row.submittedAt).toLocaleString()}` : ' · not scanned'}
+        </p>
+        <div className="grid grid-cols-6 gap-1 max-w-md">
+          {COLS.map((c) => (
+            <div key={c} className="text-center text-xs font-bold text-muted-foreground">
+              {c}
+            </div>
+          ))}
+          {Array.from({ length: 36 }, (_, i) => {
+            const marked = marks[i] === '1'
+            const inWin = winSet.has(i)
+            const inInvalid = invalidSet.has(i)
+            return (
+              <div
+                key={i}
+                title={row.cells[i]}
+                className={`aspect-square rounded-lg border text-[10px] leading-tight p-1 flex items-center justify-center text-center ${
+                  marked ? 'bg-primary/15 font-semibold' : 'bg-background'
+                } ${inWin ? 'border-emerald-500 border-2' : inInvalid ? 'border-amber-500 border-2' : marked ? 'border-primary' : ''}`}
+              >
+                <span className="line-clamp-3 break-words">{row.cells[i]}</span>
+              </div>
+            )
+          })}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Compare the grid against the scan photo to verify the read
+          {released
+            ? ' — green outline = winning line, amber = marked line with uncalled items.'
+            : ' — bingo lines appear here once scores release.'}
+        </p>
+      </div>
+    </div>
   )
 }

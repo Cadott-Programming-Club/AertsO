@@ -23,6 +23,7 @@ export const TABLES = [
   'AertsOBoard',
   'AertsOSubmission',
   'AertsOAnswerKey',
+  'AertsOGame',
 ] as const
 
 export const DDL: string[] = [
@@ -80,6 +81,7 @@ export const DDL: string[] = [
     "boardId" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "marks" TEXT NOT NULL,
+    "photo" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     CONSTRAINT "AertsOSubmission_boardId_fkey" FOREIGN KEY ("boardId") REFERENCES "AertsOBoard"("id") ON DELETE CASCADE ON UPDATE CASCADE,
@@ -98,6 +100,22 @@ export const DDL: string[] = [
   // shared-pool / multi-admin score-release model landed. Idempotent; the
   // pre-existing table held at most one row per email already.
   `CREATE UNIQUE INDEX IF NOT EXISTS "AertsOAnswerKey_updatedBy_key" ON "AertsOAnswerKey"("updatedBy")`,
+
+  `CREATE TABLE IF NOT EXISTS "AertsOGame" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "rulesText" TEXT,
+    "endsAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL
+  )`,
+]
+
+// Column additions to ALREADY-EXISTING tables. Unlike DDL (which only runs
+// when a table is missing), these run on EVERY cold start so deployments
+// created before the column existed get migrated. Everything here must be
+// idempotent (ADD COLUMN IF NOT EXISTS).
+export const MIGRATIONS: string[] = [
+  `ALTER TABLE "AertsOSubmission" ADD COLUMN IF NOT EXISTS "photo" TEXT`,
 ]
 
 const RLS: string[] = TABLES.map(
@@ -126,7 +144,7 @@ export async function ensureSchema(db: PrismaClient): Promise<void> {
   }
 
   const missing = TABLES.filter((t) => !existing.has(t))
-  const statements = [...(missing.length ? DDL : []), ...RLS]
+  const statements = [...(missing.length ? DDL : []), ...MIGRATIONS, ...RLS]
   for (const stmt of statements) {
     try {
       await db.$executeRawUnsafe(stmt)

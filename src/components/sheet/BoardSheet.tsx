@@ -21,7 +21,21 @@ import {
 } from '@/lib/layout'
 import { Finder, FillBox, QrBlock, SheetTitle, SheetPage } from './Sheet'
 
-export function BoardSheet({ cells, code, qrPayload, stamp }: { cells: string[]; code: string; qrPayload: string; stamp?: string }) {
+export function BoardSheet({
+  cells,
+  code,
+  qrPayload,
+  stamp,
+  rules,
+  endsAt,
+}: {
+  cells: string[]
+  code: string
+  qrPayload: string
+  stamp?: string
+  rules?: string
+  endsAt?: string | null
+}) {
   const finderXY = FINDER_CENTERS.map(([cx, cy]) => [cx - 9, cy - 9]) // top-left of 18mm finder
   return (
     <SheetPage>
@@ -107,16 +121,57 @@ export function BoardSheet({ cells, code, qrPayload, stamp }: { cells: string[];
       <div style={{ marginTop: '4mm' }}>
         <QrBlock payload={qrPayload} caption={`BOARD ${formatCode(code)}`} size={QR_SIZE} />
       </div>
+
+      {/* player footer: how to submit, the deadline, and the club rules.
+          Kept compact so everything fits one letter page under the QR. */}
+      <div style={{ width: `${FRAME_W}mm`, margin: '3mm auto 0', textAlign: 'center' }}>
+        <div style={{ fontSize: '6pt', lineHeight: 1.3, color: '#222' }}>
+          <span style={{ fontWeight: 700, letterSpacing: '0.08em' }}>HOW TO SUBMIT: </span>
+          Scan the QR code with your phone camera, sign in with your email, and confirm your inked marks. You can
+          scan again to update until the game ends.
+        </div>
+        {endsAt && (
+          <div style={{ fontSize: '6.5pt', fontWeight: 700, marginTop: '1mm' }}>
+            GAME ENDS: {new Date(endsAt).toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'short' })}
+          </div>
+        )}
+        {rules && rules.trim().length > 0 && (
+          <div style={{ fontSize: '5.5pt', lineHeight: 1.25, color: '#333', marginTop: '1.5mm', whiteSpace: 'pre-wrap' }}>
+            RULES: {rules.trim().slice(0, 450)}
+            {rules.trim().length > 450 ? '…' : ''}
+          </div>
+        )}
+      </div>
     </SheetPage>
   )
 }
 
 // Multi-board batch: one sheet page per board.
-export function BoardBatch({ boards, origin, stamps }: { boards: { cells: string[]; code: string }[]; origin: string; stamps?: Record<string, string> }) {
+export function BoardBatch({
+  boards,
+  origin,
+  stamps,
+  rules,
+  endsAt,
+}: {
+  boards: { cells: string[]; code: string }[]
+  origin: string
+  stamps?: Record<string, string>
+  rules?: string
+  endsAt?: string | null
+}) {
   return (
     <>
       {boards.map((b) => (
-        <BoardSheet key={b.code} cells={b.cells} code={b.code} qrPayload={`${origin}/?scan=${b.code}`} stamp={stamps?.[b.code]} />
+        <BoardSheet
+          key={b.code}
+          cells={b.cells}
+          code={b.code}
+          qrPayload={`${origin}/?scan=${b.code}`}
+          stamp={stamps?.[b.code]}
+          rules={rules}
+          endsAt={endsAt}
+        />
       ))}
     </>
   )

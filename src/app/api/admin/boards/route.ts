@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { createBoard, boardView } from '@/lib/boards'
+import { resetGameClockIfEnded } from '@/lib/game'
 import type { AertsOBoard } from '@prisma/client'
 
 // Admin: print a batch of unassigned boards (players claim them by scanning).
@@ -9,7 +10,8 @@ import type { AertsOBoard } from '@prisma/client'
 // scans, and the answer keys are cleared first. Without the key wipe, stale
 // keys from the last game would "release" scores for the new boards against
 // the old consensus the moment a player scans (release state is computed
-// live from the keys), and old-sheet codes would keep resolving.
+// live from the keys), and old-sheet codes would keep resolving. A PASSED
+// end date is also cleared so the new boards aren't born locked.
 export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user?.isAdmin) return NextResponse.json({ error: 'Admins only.' }, { status: 403 })
@@ -21,6 +23,7 @@ export async function POST(req: Request) {
     const clearedSubmissions = (await db.aertsOSubmission.deleteMany({})).count
     const clearedBoards = (await db.aertsOBoard.deleteMany({})).count
     const clearedKeys = (await db.aertsOAnswerKey.deleteMany({})).count
+    const gameClockReset = await resetGameClockIfEnded()
 
     const boards: AertsOBoard[] = []
     for (let i = 0; i < n; i++) {
@@ -31,6 +34,7 @@ export async function POST(req: Request) {
       clearedBoards,
       clearedSubmissions,
       clearedKeys,
+      gameClockReset,
       boards: await Promise.all(boards.map((b) => boardView(b))),
     })
   } catch (e) {

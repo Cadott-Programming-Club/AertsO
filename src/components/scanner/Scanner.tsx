@@ -391,7 +391,8 @@ export function Scanner({
     const res = await fetch('/api/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: outcome?.board?.code, marks: bitmap }),
+      // photo rides along so admins can review the paper against the marks
+      body: JSON.stringify({ code: outcome?.board?.code, marks: bitmap, photo: outcome?.photo }),
     })
     const json = await res.json().catch(() => ({}))
     if (!res.ok) {

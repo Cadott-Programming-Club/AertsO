@@ -29,6 +29,7 @@ function AertsOApp() {
   const [me, setMe] = useState<Me | null>(null)
   const [meLoaded, setMeLoaded] = useState(false)
   const [myBoards, setMyBoards] = useState<MyBoard[]>([])
+  const [game, setGame] = useState<{ rules: string; endsAt: string | null; ended: boolean } | null>(null)
 
   const printParam = params.get('print')
   const idsParam = params.get('ids') ?? undefined
@@ -38,6 +39,7 @@ function AertsOApp() {
   const scanDeepLink = params.get('scan') // from a native-camera QR scan
   const showScan = viewParam === 'scan' || Boolean(scanDeepLink)
   const showLogin = viewParam === 'login'
+  const showAdmin = viewParam === 'admin'
 
   const refreshMe = useCallback(async () => {
     const res = await fetch('/api/me')
@@ -58,6 +60,13 @@ function AertsOApp() {
   useEffect(() => {
     refreshMe()
   }, [refreshMe])
+
+  useEffect(() => {
+    fetch('/api/game')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => j && setGame(j))
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     refreshBoards()
@@ -110,6 +119,11 @@ function AertsOApp() {
                   Sign in
                 </Button>
               ))}
+            {me?.isAdmin && (
+              <Button variant={showAdmin ? 'default' : 'ghost'} size="sm" onClick={() => openUrl('/?view=admin')}>
+                Admin
+              </Button>
+            )}
           </div>
         </div>
       </header>
@@ -146,9 +160,33 @@ function AertsOApp() {
               />
             }
           />
+        ) : showAdmin ? (
+          me?.isAdmin ? (
+            <AdminPanel me={me} openPrint={openUrl} />
+          ) : (
+            <Card>
+              <CardContent className="pt-6 flex flex-col gap-3">
+                <p className="text-sm text-muted-foreground">
+                  {me
+                    ? 'This area is for club admins. Ask an admin to add your email if you should have access.'
+                    : 'Sign in with an admin email to manage the game.'}
+                </p>
+                {!me && (
+                  <div className="max-w-sm">
+                    <LoginView
+                      onSuccess={(m) => {
+                        setMe(m)
+                        refreshMe()
+                      }}
+                    />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )
         ) : null}
 
-        {!showScan && (
+        {!showScan && !showAdmin && (
           <>
             <section className="text-center py-4">
               <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
@@ -159,6 +197,19 @@ function AertsOApp() {
                 here — your board links to your email and your bingo is checked against the admins&apos;
                 answer keys once they&apos;re all in.
               </p>
+              {game?.endsAt && (
+                <p
+                  className={`mt-4 inline-block rounded-md border px-3 py-1.5 text-sm ${
+                    game.ended
+                      ? 'border-amber-500/60 bg-amber-500/15 text-amber-900 dark:text-amber-100'
+                      : 'border-primary/30 bg-primary/10 text-foreground'
+                  }`}
+                >
+                  {game.ended
+                    ? `The game ended ${new Date(game.endsAt).toLocaleString()} — boards are locked for scoring.`
+                    : `Game ends ${new Date(game.endsAt).toLocaleString()} — submit your board by then.`}
+                </p>
+              )}
               <div className="mt-6 flex flex-wrap justify-center gap-3">
                 <Button size="lg" onClick={() => openUrl('/?view=scan')}>
                   Scan a sheet
@@ -192,6 +243,21 @@ function AertsOApp() {
               </div>
             </section>
 
+            {game?.rules && game.rules.trim().length > 0 && (
+              <section aria-label="Club rules">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">Club rules</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                      {game.rules}
+                    </p>
+                  </CardContent>
+                </Card>
+              </section>
+            )}
+
             {me && myBoards.length > 0 && (
               <section aria-label="My boards">
                 <Card>
@@ -218,7 +284,15 @@ function AertsOApp() {
               </section>
             )}
 
-            {me?.isAdmin && <AdminPanel me={me} openPrint={openUrl} />}
+            {me?.isAdmin && (
+              <p className="text-center text-xs text-muted-foreground">
+                Heads-up, admins: printing, answer keys, and game settings now live in the{' '}
+                <button className="underline" onClick={() => openUrl('/?view=admin')}>
+                  admin panel
+                </button>
+                .
+              </p>
+            )}
           </>
         )}
       </main>
