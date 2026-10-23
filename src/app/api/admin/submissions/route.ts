@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
-import { boardView, getAnswerKeyState } from '@/lib/boards'
+import { boardView, getAnswerKeyState, type AnswerKeyState } from '@/lib/boards'
 
 // Admin: all boards + submissions. While answer keys are still outstanding
 // the scores are SEALED — rows show marks but no bingo verdicts. Once every
@@ -22,7 +22,14 @@ export async function GET(req: Request) {
       include: { submission: true, owner: true },
     })
     if (!board) return NextResponse.json({ error: 'Unknown board.' }, { status: 404 })
-    return NextResponse.json({ row: await detailRow(board) })
+    const state = await getAnswerKeyState()
+    return NextResponse.json({
+      row: await detailRow(board, state),
+      // consensus item ids (empty while no admin key exists) — the verify
+      // dialog highlights called-but-unmarked spots with these
+      calledItemIds: state.consensus,
+      released: state.released,
+    })
   }
 
   const boards = await db.aertsOBoard.findMany({
@@ -86,8 +93,7 @@ interface BoardDetail {
   owner: { email: string } | null
 }
 
-async function detailRow(b: BoardDetail) {
-  const state = await getAnswerKeyState()
+async function detailRow(b: BoardDetail, state: AnswerKeyState) {
   const calledSet = new Set(state.consensus)
   const view = await boardView(b)
   const marks = b.submission?.marks ?? null

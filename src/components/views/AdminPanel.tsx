@@ -3,7 +3,7 @@
 // Admin panel: shared item pool, batch printing, master keys (one per admin,
 // with comparison + automatic score release), live submissions.
 
-import { Fragment, useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -32,6 +32,7 @@ interface Row {
   winningLines: number[][]
   invalidLines: number[][]
   cells: string[]
+  itemIds?: string[] // aligned with cells — detail rows carry it
 }
 interface KeyInfo {
   email: string
@@ -88,10 +89,13 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
   const [game, setGame] = useState<GameInfo | null>(null)
   const [rulesDraft, setRulesDraft] = useState('')
   const [endsDraft, setEndsDraft] = useState('')
-  // boards-tab review expansion (per-board detail incl. the scan photo)
+  // boards-tab verify dialog (per-board detail incl. the scan photo)
   const [reviewCode, setReviewCode] = useState<string | null>(null)
   const [reviewRow, setReviewRow] = useState<Row | null>(null)
   const [reviewLoading, setReviewLoading] = useState(false)
+  // consensus item ids from the detail fetch — powers the
+  // called-but-not-marked highlight in the verify grid
+  const [reviewCalled, setReviewCalled] = useState<Set<string>>(new Set())
 
   const probeDb = useCallback(async () => {
     try {
@@ -298,24 +302,43 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
   }
 
   const openReview = async (code: string) => {
-    if (reviewCode === code) {
-      setReviewCode(null)
-      setReviewRow(null)
-      return
-    }
     setReviewCode(code)
     setReviewRow(null)
+    setReviewCalled(new Set())
     setReviewLoading(true)
     try {
       const res = await fetch(`/api/admin/submissions?code=${code}`)
       if (res.ok) {
         const json = await res.json()
         setReviewRow(json.row as Row)
+        setReviewCalled(new Set((json.calledItemIds ?? []) as string[]))
       }
     } finally {
       setReviewLoading(false)
     }
   }
+
+  const closeReview = () => {
+    setReviewCode(null)
+    setReviewRow(null)
+    setReviewCalled(new Set())
+  }
+
+  // verify dialog: ESC closes it; page scroll locks while it's open
+  useEffect(() => {
+    if (!reviewCode) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeReview()
+    }
+    window.addEventListener('keydown', onKey)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prev
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- closeReview is a plain state reset
+  }, [reviewCode])
 
   const reprintLast = () => {
     // lastIds lives only in memory — a reload wipes it, which used to make
@@ -662,49 +685,34 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
                 </thead>
                 <tbody>
                   {rows.map((r) => (
-                    <Fragment key={r.code}>
-                      <tr className="border-t">
-                        <td className="px-3 py-2 font-mono">{formatCode(r.code)}</td>
-                        <td className="px-3 py-2 text-muted-foreground">{r.ownerEmail ?? <span className="text-muted-foreground/50">unclaimed</span>}</td>
-                        <td className="px-3 py-2">{r.markedCount || '—'}</td>
-                        <td className="px-3 py-2">
-                          {release && !release.released ? (
-                            r.submittedAt ? (
-                              <span className="text-muted-foreground">sealed until release</span>
-                            ) : (
-                              <span className="text-muted-foreground/50">not scanned</span>
-                            )
-                          ) : r.bingo ? (
-                            <span className="text-emerald-600 dark:text-emerald-400 font-medium">Bingo ✓</span>
-                          ) : r.invalidLines.length > 0 ? (
-                            <span className="text-amber-600 dark:text-amber-400">Review — marked line with uncalled items</span>
-                          ) : r.submittedAt ? (
-                            <span className="text-muted-foreground">no bingo</span>
+                    <tr key={r.code} className="border-t">
+                      <td className="px-3 py-2 font-mono">{formatCode(r.code)}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{r.ownerEmail ?? <span className="text-muted-foreground/50">unclaimed</span>}</td>
+                      <td className="px-3 py-2">{r.markedCount || '—'}</td>
+                      <td className="px-3 py-2">
+                        {release && !release.released ? (
+                          r.submittedAt ? (
+                            <span className="text-muted-foreground">sealed until release</span>
                           ) : (
                             <span className="text-muted-foreground/50">not scanned</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 text-muted-foreground text-xs">{r.submittedAt ? new Date(r.submittedAt).toLocaleString() : '—'}</td>
-                        <td className="px-3 py-2">
-                          <Button size="sm" variant="outline" disabled={!r.marks} onClick={() => void openReview(r.code)}>
-                            {reviewCode === r.code ? 'Hide' : 'Verify'}
-                          </Button>
-                        </td>
-                      </tr>
-                      {reviewCode === r.code && (
-                        <tr className="bg-muted/30">
-                          <td colSpan={6} className="px-3 py-4">
-                            {reviewLoading ? (
-                              <p className="text-sm text-muted-foreground">Loading the scan…</p>
-                            ) : reviewRow ? (
-                              <ReviewDetail row={reviewRow} released={Boolean(release?.released)} />
-                            ) : (
-                              <p className="text-sm text-muted-foreground">No details available.</p>
-                            )}
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
+                          )
+                        ) : r.bingo ? (
+                          <span className="text-emerald-600 dark:text-emerald-400 font-medium">Bingo ✓</span>
+                        ) : r.invalidLines.length > 0 ? (
+                          <span className="text-amber-600 dark:text-amber-400">Review — marked line with uncalled items</span>
+                        ) : r.submittedAt ? (
+                          <span className="text-muted-foreground">no bingo</span>
+                        ) : (
+                          <span className="text-muted-foreground/50">not scanned</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground text-xs">{r.submittedAt ? new Date(r.submittedAt).toLocaleString() : '—'}</td>
+                      <td className="px-3 py-2">
+                        <Button size="sm" variant="outline" disabled={!r.marks} onClick={() => void openReview(r.code)}>
+                          Verify
+                        </Button>
+                      </td>
+                    </tr>
                   ))}
                   {rows.length === 0 && (
                     <tr>
@@ -718,65 +726,130 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
             </div>
           </TabsContent>
         </Tabs>
+        {reviewCode && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+            onClick={closeReview}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Verify board"
+              className="relative flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border bg-background shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-3 border-b px-5 py-3">
+                <h3 className="text-base font-semibold">Verify board {formatCode(reviewCode)}</h3>
+                <button
+                  onClick={closeReview}
+                  aria-label="Close"
+                  className="rounded-md px-2 py-1 text-lg leading-none text-muted-foreground hover:bg-muted"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="overflow-y-auto p-5">
+                {reviewLoading ? (
+                  <p className="py-16 text-center text-sm text-muted-foreground">Loading the scan…</p>
+                ) : reviewRow ? (
+                  <ReviewDetail row={reviewRow} released={Boolean(release?.released)} calledIds={reviewCalled} />
+                ) : (
+                  <p className="py-16 text-center text-sm text-muted-foreground">No details available.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
         {msg && <p className="text-sm text-muted-foreground mt-3">{msg}</p>}
       </CardContent>
     </Card>
   )
 }
 
-// Boards-tab verification view: the recorded mark grid side-by-side with the
-// photo the scanner took of the physical sheet, so an admin can confirm the
-// read was faithful. Winning lines get a green outline, marked-but-uncalled
-// lines amber (only once scores have released).
-function ReviewDetail({ row, released }: { row: Row; released: boolean }) {
+// Boards-tab verification dialog: the recorded mark grid beside the photo the
+// scanner took of the physical sheet, so an admin can confirm the read was
+// faithful. Winning lines get a green outline, marked-but-uncalled lines
+// amber (once scores have released), and spots whose item IS called per the
+// answer keys but NOT marked on the board get a dashed sky outline — if the
+// photo shows ink there, it counts (a scanner miss worth fixing).
+function ReviewDetail({ row, released, calledIds }: { row: Row; released: boolean; calledIds: Set<string> }) {
   const marks = row.marks ?? ''
   const winSet = new Set(released ? row.winningLines.flat() : [])
   const invalidSet = new Set(released ? row.invalidLines.flat() : [])
+  const itemIds = row.itemIds ?? []
+  const missed = Array.from({ length: 36 }, (_, i) => itemIds[i]).filter(
+    (id, i) => id && calledIds.has(id) && marks[i] !== '1',
+  ).length
   return (
-    <div className="flex flex-col md:flex-row gap-4">
-      {row.photo ? (
-        <img src={row.photo} alt="Scan photo" className="w-full md:w-64 rounded-lg border bg-black" />
-      ) : (
-        <div className="md:w-64 text-xs text-muted-foreground">
-          No scan photo on file{row.submittedAt ? ' (submitted before photos were kept).' : ' — not scanned yet.'}
-        </div>
-      )}
-      <div className="flex-1 flex flex-col gap-2">
-        <p className="text-sm">
-          <span className="font-medium">{row.markedCount} marked</span>
-          {' · '}
-          {row.ownerEmail ?? 'unclaimed'}
-          {row.submittedAt ? ` · scanned ${new Date(row.submittedAt).toLocaleString()}` : ' · not scanned'}
-        </p>
-        <div className="grid grid-cols-6 gap-1 max-w-md">
-          {COLS.map((c) => (
-            <div key={c} className="text-center text-xs font-bold text-muted-foreground">
-              {c}
-            </div>
-          ))}
-          {Array.from({ length: 36 }, (_, i) => {
-            const marked = marks[i] === '1'
-            const inWin = winSet.has(i)
-            const inInvalid = invalidSet.has(i)
-            return (
-              <div
-                key={i}
-                title={row.cells[i]}
-                className={`aspect-square rounded-lg border text-[10px] leading-tight p-1 flex items-center justify-center text-center ${
-                  marked ? 'bg-primary/15 font-semibold' : 'bg-background'
-                } ${inWin ? 'border-emerald-500 border-2' : inInvalid ? 'border-amber-500 border-2' : marked ? 'border-primary' : ''}`}
-              >
-                <span className="line-clamp-3 break-words">{row.cells[i]}</span>
+    <div className="flex flex-col gap-4">
+      <p className="text-sm">
+        <span className="font-medium">{row.markedCount} marked</span>
+        {' · '}
+        {row.ownerEmail ?? 'unclaimed'}
+        {row.submittedAt ? ` · scanned ${new Date(row.submittedAt).toLocaleString()}` : ' · not scanned'}
+        {calledIds.size > 0 && (
+          <>
+            {' · '}
+            <span className="font-medium text-sky-600 dark:text-sky-400">{missed} called but not marked</span>
+          </>
+        )}
+      </p>
+      <div className="flex flex-col items-start gap-6 lg:flex-row">
+        {row.photo ? (
+          <img
+            src={row.photo}
+            alt="Scan photo"
+            className="max-h-[64vh] w-full rounded-lg border bg-black object-contain lg:w-[46%] lg:shrink-0"
+          />
+        ) : (
+          <div className="w-full rounded-lg border bg-muted/30 p-6 text-center text-sm text-muted-foreground lg:w-[46%] lg:shrink-0">
+            No scan photo on file{row.submittedAt ? ' (submitted before photos were kept).' : ' — not scanned yet.'}
+          </div>
+        )}
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <div className="grid grid-cols-6 gap-1.5">
+            {COLS.map((c) => (
+              <div key={c} className="text-center text-xs font-bold text-muted-foreground">
+                {c}
               </div>
-            )
-          })}
+            ))}
+            {Array.from({ length: 36 }, (_, i) => {
+              const marked = marks[i] === '1'
+              const inWin = winSet.has(i)
+              const inInvalid = invalidSet.has(i)
+              const calledNotMarked = Boolean(itemIds[i] && calledIds.has(itemIds[i]) && !marked)
+              return (
+                <div
+                  key={i}
+                  title={row.cells[i]}
+                  className={`flex aspect-square items-center justify-center rounded-lg border p-1.5 text-center text-[11px] leading-tight break-words ${
+                    marked ? 'bg-primary/15 font-semibold' : calledNotMarked ? 'bg-sky-500/5' : 'bg-background'
+                  } ${
+                    inWin
+                      ? 'border-2 border-emerald-500'
+                      : inInvalid
+                        ? 'border-2 border-amber-500'
+                        : calledNotMarked
+                          ? 'border-2 border-dashed border-sky-500'
+                          : marked
+                            ? 'border-primary'
+                            : ''
+                  }`}
+                >
+                  <span className="line-clamp-4">{row.cells[i]}</span>
+                </div>
+              )
+            })}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Compare the grid against the scan photo to verify the read.{' '}
+            {calledIds.size > 0 &&
+              'Blue dashed = called item the player did NOT mark — if the photo shows ink there, it counts. '}
+            {released
+              ? 'Green outline = winning line · amber = marked line with uncalled items.'
+              : 'Winning/amber outlines appear once scores release.'}
+          </p>
         </div>
-        <p className="text-xs text-muted-foreground">
-          Compare the grid against the scan photo to verify the read
-          {released
-            ? ' — green outline = winning line, amber = marked line with uncalled items.'
-            : ' — bingo lines appear here once scores release.'}
-        </p>
       </div>
     </div>
   )
