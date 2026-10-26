@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { createBoard, boardView } from '@/lib/boards'
 import { resetGameClockIfEnded } from '@/lib/game'
+import { recomputeAutoScores } from '@/lib/scores'
 import type { AertsOBoard } from '@prisma/client'
 
 // Admin: print a batch of unassigned boards (players claim them by scanning).
@@ -24,6 +25,10 @@ export async function POST(req: Request) {
     const clearedBoards = (await db.aertsOBoard.deleteMany({})).count
     const clearedKeys = (await db.aertsOAnswerKey.deleteMany({})).count
     const gameClockReset = await resetGameClockIfEnded()
+    // fresh game, no scans/keys left — wipe the leaderboard too (auto AND
+    // manual; the old game's score corrections don't carry into a new one)
+    await db.aertsOScore.deleteMany({})
+    await recomputeAutoScores()
 
     const boards: AertsOBoard[] = []
     for (let i = 0; i < n; i++) {

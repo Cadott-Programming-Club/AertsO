@@ -43,6 +43,38 @@ If the automatic mark detection ever struggles, the confirm grid lets the
 player fix marks with a tap — nothing can block a game night. Entry is
 QR-only: camera or photo upload, no codes to type.
 
+## Leaderboard & scores
+
+Every scan earns points automatically, and the **Leaderboard** on the home
+page ranks all players. Like the board results, it stays **sealed** while
+admin keys are outstanding — no rows at all, so relative standings can't
+leak — and goes live the moment scores release. Player identity is masked to
+the email local-part (e.g. `brody`); signed-in players see a “you're #N”
+badge and their own row highlighted.
+
+Scoring (graded against the key **consensus**):
+
+- **+1** per inked space whose item was actually called
+- **+10** per verified bingo line
+- Recomputed automatically whenever a board is scanned, an answer key is
+  saved (the consensus shifts), or a new batch starts
+
+**Admins can manually change any player's score** — *Admin → Scores*:
+
+- Type a new **Total** (plus an optional **Note** like "offline round win")
+  and Save. The edit is stored as a *manual adjustment* on top of the auto
+  points, so later scans still add on instead of wiping it.
+- Quick **+10** buttons for fast in-game awards; totals can go negative for
+  penalties.
+- **Recompute from scans** rescores everyone from the current submissions +
+  consensus (manual adjustments are always preserved).
+- The tab shows the full split per player: bingos, auto points, adjustment,
+  rank, and who last touched the score — visible to admins even while
+  scores are sealed.
+
+Starting a new batch wipes the whole leaderboard (auto and manual) along
+with the boards, scans, and keys — a fresh game starts at zero.
+
 ## Board codes
 
 Each board has one 8-character code (like `K7QM-X2P9`) that is its whole
@@ -133,18 +165,22 @@ the provider back to `"postgresql"` before committing/pushing.)
 src/
   app/
     page.tsx              # the whole app: views switch on ?view / ?print / ?scan
-    api/                  # auth (email OTP), items, boards, submit, admin
+    api/                  # auth (email OTP), items, boards, submit, leaderboard,
+                          #   game, admin (boards, submissions, answer-key, scores, setup)
     api/admin/print       # admin-only print data (players never print)
   lib/
     layout.ts             # sheet geometry + board codes — single source of truth (print + CV)
     cv.ts                 # binarize, finder detection, homography, mark sampling
     bingo.ts logic lives in layout.ts (line evaluation)
     auth.ts               # sessions, login codes, SMTP mailer
-    boards.ts             # board generation, answer key, scoring
+    boards.ts             # board generation, multi-admin keys, consensus + release
+    scores.ts             # leaderboard engine: auto points, manual adjustments
+    game.ts               # game settings: rules, end date, force-release
+    bootstrap.ts          # cold-start DDL + RLS for fresh Postgres deploys
   components/
     sheet/                # printable BoardSheet / AnswerSheet (mm-accurate)
     scanner/Scanner.tsx   # camera + upload + CV + deep links + human-confirm grid
-    views/                # login, admin panel, print overlay
+    views/                # login, admin panel (+ Scores tab), leaderboard, print overlay
 ```
 
 ## Tips for game night

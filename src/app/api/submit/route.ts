@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
-import { boardView, submissionStatus } from '@/lib/boards'
+import { boardView, submissionStatus, getAnswerKeyState } from '@/lib/boards'
 import { getGame } from '@/lib/game'
 import { normalizeCode } from '@/lib/layout'
+import { recomputeAutoScores, boardAutoPoints } from '@/lib/scores'
 
 // Submit scanned marks. Requires sign-in; binds an unclaimed board to the user.
 // The scan photo rides along so admins can review the paper vs. the recorded
@@ -64,7 +65,22 @@ export async function POST(req: Request) {
     update: { userId: user.id, marks, ...(safePhoto ? { photo: safePhoto } : {}) },
   })
 
+  // rescore everyone — a new/changed scan can flip points on any board
+  await recomputeAutoScores()
+
   const view = await boardView(board)
   const status = await submissionStatus(board.id, view.itemIds, marks)
-  return NextResponse.json({ ok: true, board: { code: board.code }, status })
+
+  // points earned by this scan — attributed to the board owner, surfaced only
+  // when scores are released (sealed standings must not leak). Admins scanning
+  // a sheet for someone else just see the plain result. A null ownerId was
+  // just claimed by this submitter above, so they are the owner.
+  let points: { board: number; myTotal: number } | null = null
+  if (status.released && (board.ownerId === user.id || board.ownerId === null)) {
+    const boardPts = boardAutoPoints(view.itemIds, marks, new Set((await getAnswerKeyState()).consensus))
+    const score = await db.aertsOScore.findUnique({ where: { userId: user.id } })
+    points = { board: boardPts, myTotal: (score?.auto ?? 0) + (score?.manual ?? 0) }
+  }
+
+  return NextResponse.json({ ok: true, board: { code: board.code }, status, points })
 }

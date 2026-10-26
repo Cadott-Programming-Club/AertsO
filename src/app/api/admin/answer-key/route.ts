@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { getAnswerKeyState } from '@/lib/boards'
+import { recomputeAutoScores } from '@/lib/scores'
 
 // Admin answer keys ("master keys"). The pool is shared; each admin keeps
 // their own key. GET returns every admin's key plus the comparison — which
@@ -57,6 +58,9 @@ export async function POST(req: Request) {
   } else {
     await db.aertsOAnswerKey.create({ data: { itemIds: JSON.stringify(itemIds), updatedBy: user.email } })
   }
+
+  // the consensus (and with it every board's grade) can shift — rescore
+  await recomputeAutoScores()
 
   const state = await getAnswerKeyState()
   return NextResponse.json({

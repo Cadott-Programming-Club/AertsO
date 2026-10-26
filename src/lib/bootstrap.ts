@@ -24,6 +24,7 @@ export const TABLES = [
   'AertsOSubmission',
   'AertsOAnswerKey',
   'AertsOGame',
+  'AertsOScore',
 ] as const
 
 export const DDL: string[] = [
@@ -109,6 +110,18 @@ export const DDL: string[] = [
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL
   )`,
+
+  `CREATE TABLE IF NOT EXISTS "AertsOScore" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "userId" TEXT NOT NULL,
+    "auto" INTEGER NOT NULL DEFAULT 0,
+    "manual" INTEGER NOT NULL DEFAULT 0,
+    "note" TEXT,
+    "updatedBy" TEXT,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "AertsOScore_userId_fkey" FOREIGN KEY ("userId") REFERENCES "AertsOUser"("id") ON DELETE CASCADE ON UPDATE CASCADE
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "AertsOScore_userId_key" ON "AertsOScore"("userId")`,
 ]
 
 // Column additions to ALREADY-EXISTING tables. Unlike DDL (which only runs

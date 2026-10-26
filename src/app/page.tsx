@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/badge'
 import { LoginView, type Me } from '@/components/views/LoginView'
 import { AdminPanel } from '@/components/views/AdminPanel'
 import { PrintView } from '@/components/views/PrintView'
+import { Leaderboard } from '@/components/views/Leaderboard'
 import { Scanner } from '@/components/scanner/Scanner'
 import { COLS, formatCode } from '@/lib/layout'
 
@@ -264,6 +265,10 @@ function AertsOApp() {
                 </Card>
               </section>
             )}
+
+            <section aria-label="Leaderboard">
+              <Leaderboard meEmail={me?.email ?? null} />
+            </section>
 
             {me && myBoards.length > 0 && (
               <section aria-label="My boards">

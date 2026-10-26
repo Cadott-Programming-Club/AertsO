@@ -82,6 +82,7 @@ export function Scanner({
     pendingAdmins?: string[]
     disputedCount?: number
     keysCount?: number
+    points?: { board: number; myTotal: number } | null
   }>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -747,6 +748,15 @@ export function Scanner({
             </p>
           ) : (
             <p className="text-sm text-muted-foreground">Marks saved. Bingo status appears once admins scan in their answer keys.</p>
+          )}
+          {!savedKey && submitResult.points && (
+            <p className="text-sm">
+              <span className="font-semibold text-primary">
+                +{submitResult.points.board} pt{submitResult.points.board === 1 ? '' : 's'}
+              </span>{' '}
+              this scan — your leaderboard total is now{' '}
+              <span className="font-semibold tabular-nums">{submitResult.points.myTotal}</span>.
+            </p>
           )}
           {!savedKey && (
             <p className="text-xs text-muted-foreground">

@@ -62,6 +62,21 @@ interface GameInfo {
   endsAt: string | null
   ended: boolean
 }
+interface ScoreRow {
+  userId: string
+  email: string
+  name: string
+  auto: number
+  manual: number
+  total: number
+  note: string | null
+  updatedBy: string | null
+  updatedAt: string | null
+  bingos: number
+  boardsPlayed: number
+  lastScanAt: string | null
+  rank: number
+}
 
 function initial(email: string) {
   return (email.split('@')[0] ?? '?').slice(0, 1).toUpperCase()
@@ -96,6 +111,12 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
   // consensus item ids from the detail fetch — powers the
   // called-but-not-marked highlight in the verify grid
   const [reviewCalled, setReviewCalled] = useState<Set<string>>(new Set())
+  // scores tab
+  const [scores, setScores] = useState<ScoreRow[]>([])
+  const [scoresReleased, setScoresReleased] = useState<boolean | null>(null)
+  const [scoreDrafts, setScoreDrafts] = useState<Record<string, { total: string; note: string }>>({})
+  const [scoreMsg, setScoreMsg] = useState('')
+  const [savingId, setSavingId] = useState<string | null>(null)
 
   const probeDb = useCallback(async () => {
     try {
@@ -148,13 +169,31 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
     setEndsDraft(json.endsAt ? toLocalInput(json.endsAt) : '')
   }, [])
 
+  const applyScoreRows = useCallback((rows: ScoreRow[]) => {
+    setScores(rows)
+    setScoreDrafts(
+      Object.fromEntries(
+        rows.map((r) => [r.userId, { total: String(r.total), note: r.note ?? '' }]),
+      ),
+    )
+  }, [])
+
+  const loadScores = useCallback(async () => {
+    const res = await fetch('/api/admin/scores')
+    if (!res.ok) return
+    const json = await res.json()
+    setScoresReleased(Boolean(json.released))
+    applyScoreRows(json.rows)
+  }, [applyScoreRows])
+
   useEffect(() => {
     loadItems()
     loadSubs()
     loadKeys()
     loadGame()
+    loadScores()
     probeDb()
-  }, [loadItems, loadSubs, loadKeys, loadGame, probeDb])
+  }, [loadItems, loadSubs, loadKeys, loadGame, loadScores, probeDb])
 
   const runSetup = async () => {
     setMsg('')
@@ -351,6 +390,50 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
 
   const printAnswers = () => openPrint('/?print=answers')
 
+  // ---- scores tab ----
+  const saveScore = async (row: ScoreRow, body: Record<string, unknown>) => {
+    setScoreMsg('')
+    setSavingId(row.userId)
+    try {
+      const res = await fetch('/api/admin/scores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: row.userId, ...body }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setScoreMsg(json.error ?? 'Could not save.')
+        return
+      }
+      applyScoreRows(json.rows)
+      setScoreMsg(`Saved — ${row.email} is now ${json.row?.total ?? '?'} pts.`)
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  const recomputeScores = async () => {
+    setScoreMsg('')
+    const res = await fetch('/api/admin/scores', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'recompute' }),
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setScoreMsg(json.error ?? 'Could not recompute.')
+      return
+    }
+    applyScoreRows(json.rows)
+    setScoreMsg('Rescored everyone from current scans + the key consensus.')
+  }
+
+  const dirtyScore = (row: ScoreRow): boolean => {
+    const d = scoreDrafts[row.userId]
+    if (!d) return false
+    return Number(d.total) !== row.total || (d.note ?? '') !== (row.note ?? '')
+  }
+
   const bingos = rows.filter((r) => r.bingo).length
   const flagged = rows.filter((r) => r.invalidLines.length > 0 && !r.bingo).length
 
@@ -410,6 +493,7 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
               Boards
               {release?.released && bingos > 0 && <span className="ml-1.5 rounded-full bg-primary text-primary-foreground text-[10px] px-1.5">{bingos}</span>}
             </TabsTrigger>
+            <TabsTrigger value="scores">Scores</TabsTrigger>
           </TabsList>
 
           <TabsContent value="game" className="flex flex-col gap-4 pt-3">
@@ -724,6 +808,123 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
                 </tbody>
               </table>
             </div>
+          </TabsContent>
+
+          <TabsContent value="scores" className="pt-3">
+            <div className="flex flex-wrap items-center gap-3 mb-3">
+              <Badge variant={scoresReleased ? 'default' : 'outline'}>
+                {scoresReleased ? 'scores released' : 'scores sealed'}
+              </Badge>
+              <Button variant="outline" size="sm" onClick={recomputeScores}>
+                Recompute from scans
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Auto points: +1 per called mark, +10 per bingo line (consensus-graded). Setting a total stores it as a
+                manual adjustment on top of auto points, so later scans still add on.
+              </p>
+            </div>
+            <div className="max-h-[28rem] overflow-auto rounded-lg border">
+              <table className="w-full text-sm min-w-[52rem]">
+                <thead className="sticky top-0 bg-muted/80 backdrop-blur z-10">
+                  <tr className="text-left">
+                    <th className="px-3 py-2 font-medium w-10">#</th>
+                    <th className="px-3 py-2 font-medium">Player</th>
+                    <th className="px-2 py-2 font-medium text-right">Bingos</th>
+                    <th className="px-2 py-2 font-medium text-right">Auto</th>
+                    <th className="px-2 py-2 font-medium text-right">Adj</th>
+                    <th className="px-2 py-2 font-medium">Total</th>
+                    <th className="px-3 py-2 font-medium">Note</th>
+                    <th className="px-3 py-2 font-medium"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {scores.map((r) => {
+                    const d = scoreDrafts[r.userId] ?? { total: String(r.total), note: '' }
+                    const dirty = dirtyScore(r)
+                    return (
+                      <tr key={r.userId} className={`border-t align-top ${dirty ? 'bg-primary/5' : ''}`}>
+                        <td className="px-3 py-2 text-muted-foreground tabular-nums">{r.rank}</td>
+                        <td className="px-3 py-2">
+                          <div className="font-medium truncate max-w-[16rem] whitespace-nowrap" title={r.email}>
+                            {r.email}
+                          </div>
+                          <div className="text-[11px] text-muted-foreground whitespace-nowrap">
+                            {r.boardsPlayed} board{r.boardsPlayed === 1 ? '' : 's'}
+                            {r.updatedBy && ` · adj by ${initial(r.updatedBy)}`}
+                          </div>
+                        </td>
+                        <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">{r.bingos}</td>
+                        <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">{r.auto}</td>
+                        <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap">
+                          {r.manual === 0 ? (
+                            <span className="text-muted-foreground/50">—</span>
+                          ) : (
+                            <span className={r.manual > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'}>
+                              {r.manual > 0 ? '+' : ''}
+                              {r.manual}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-2 py-2">
+                          <Input
+                            type="number"
+                            className="w-24 h-8 tabular-nums"
+                            value={d.total}
+                            onChange={(e) =>
+                              setScoreDrafts((prev) => ({
+                                ...prev,
+                                [r.userId]: { ...prev[r.userId], total: e.target.value },
+                              }))
+                            }
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <Input
+                            className="w-40 h-8"
+                            placeholder="why?"
+                            value={d.note}
+                            onChange={(e) =>
+                              setScoreDrafts((prev) => ({
+                                ...prev,
+                                [r.userId]: { ...prev[r.userId], note: e.target.value },
+                              }))
+                            }
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex gap-1">
+                            <Button
+                              size="sm"
+                              disabled={!dirty || savingId === r.userId}
+                              onClick={() => saveScore(r, { total: Number(d.total), note: d.note })}
+                            >
+                              Save
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              title="Add 10 points"
+                              disabled={savingId === r.userId}
+                              onClick={() => saveScore(r, { delta: 10, note: d.note })}
+                            >
+                              +10
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                  {scores.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="px-3 py-6 text-center text-muted-foreground">
+                        No players yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {scoreMsg && <p className="text-sm text-muted-foreground mt-3">{scoreMsg}</p>}
           </TabsContent>
         </Tabs>
         {reviewCode && (

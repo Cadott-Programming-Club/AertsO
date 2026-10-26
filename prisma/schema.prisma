@@ -27,6 +27,7 @@ model AertsOUser {
   sessions    AertsOSession[]
   boards      AertsOBoard[]
   submissions AertsOSubmission[]
+  score       AertsOScore?
 }
 
 model AertsOSession {
@@ -101,4 +102,20 @@ model AertsOAnswerKey {
   itemIds   String // JSON array of called item ids
   updatedBy String   @unique // admin email — every admin keeps their OWN master key
   updatedAt DateTime @updatedAt
+}
+
+// Leaderboard score. total = auto + manual.
+//   auto   — recomputed from scans whenever a submission, an answer key, or the
+//            board list changes (graded against the key CONSENSUS)
+//   manual — admin adjustment on top (kept separate so new scan points never
+//            wipe an admin's edit)
+model AertsOScore {
+  id        String     @id @default(uuid())
+  userId    String     @unique
+  user      AertsOUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  auto      Int        @default(0)
+  manual    Int        @default(0)
+  note      String? // optional reason for the last manual change
+  updatedBy String? // admin email of the last manual change
+  updatedAt DateTime   @updatedAt
 }
