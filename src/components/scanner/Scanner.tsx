@@ -66,6 +66,7 @@ export function Scanner({
   const [phase, setPhase] = useState<Phase>('choose')
   const [outcome, setOutcome] = useState<ScanOutcome | null>(null)
   const [marks, setMarks] = useState<boolean[]>([])
+  const [otherAdminCalledIds, setOtherAdminCalledIds] = useState<Set<string>>(new Set())
   const [status, setStatus] = useState('')
   // getUserMedia was refused without a user gesture (iOS Safari deep link) or
   // the permission is off — park on a one-tap "Start the camera" screen.
@@ -117,6 +118,29 @@ export function Scanner({
   }, [])
 
   useEffect(() => () => stopCamera(), [stopCamera])
+
+  useEffect(() => {
+    if (outcome?.kind !== 'answers' || !user?.isAdmin) return
+    let active = true
+    void fetch('/api/admin/answer-key')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((keyState) => {
+        if (!active || !keyState) return
+        setOtherAdminCalledIds(
+          new Set(
+            (keyState.items ?? [])
+              .filter((item: { id: string; calledBy: string[] }) => item.calledBy.some((email) => email !== user.email))
+              .map((item: { id: string }) => item.id),
+          ),
+        )
+      })
+      .catch(() => {
+        if (active) setOtherAdminCalledIds(new Set())
+      })
+    return () => {
+      active = false
+    }
+  }, [outcome?.kind, user?.email, user?.isAdmin])
 
   // ---------- core: analyze one frame/image ----------
   // requireFrame: live camera mode refuses a QR-only decode — the sheet must
@@ -639,10 +663,15 @@ export function Scanner({
                     <button
                       key={it.id}
                       onClick={() => setMarks((m) => m.map((v, j) => (j === i ? !v : v)))}
-                      className={`text-left text-xs rounded-lg border px-2.5 py-2 min-h-11 transition-colors ${
+                      className={`relative text-left text-xs rounded-lg border px-2.5 py-2 pr-6 min-h-11 transition-colors ${
                         marks[i] ? 'border-primary bg-primary/10 font-medium' : 'bg-background hover:bg-muted'
                       }`}
                     >
+                      {otherAdminCalledIds.has(it.id) && !marks[i] && (
+                        <span className="absolute right-1.5 top-1 text-emerald-600 dark:text-emerald-400" aria-label="Called by another admin">
+                          ✓
+                        </span>
+                      )}
                       {it.text}
                     </button>
                   ))}

@@ -9,9 +9,13 @@ import { TABLES, DDL } from '@/lib/bootstrap'
 // shows an "Initialize database" button when anything is missing. Idempotent.
 
 async function countAertsTables(): Promise<number> {
-  const rows = await db.$queryRawUnsafe<{ table_name: string }[]>(
-    `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`,
-  )
+  const rows = process.env.DATABASE_URL?.startsWith('file:')
+    ? await db.$queryRawUnsafe<{ table_name: string }[]>(
+        `SELECT name AS table_name FROM sqlite_master WHERE type = 'table' AND name LIKE 'AertsO%'`,
+      )
+    : await db.$queryRawUnsafe<{ table_name: string }[]>(
+        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`,
+      )
   const names = new Set(rows.map((r) => r.table_name))
   return TABLES.filter((t) => names.has(t)).length
 }
@@ -39,6 +43,15 @@ export async function POST() {
   if (!user?.isAdmin) return NextResponse.json({ error: 'Admins only.' }, { status: 403 })
   try {
     const before = await countAertsTables()
+    if (process.env.DATABASE_URL?.startsWith('file:')) {
+      return NextResponse.json({
+        ok: true,
+        ready: before === TABLES.length,
+        created: 0,
+        existing: before,
+        total: TABLES.length,
+      })
+    }
     for (const stmt of DDL) {
       await db.$executeRawUnsafe(stmt)
     }

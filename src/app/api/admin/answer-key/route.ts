@@ -15,10 +15,12 @@ export async function GET() {
 
   const state = await getAnswerKeyState()
   const keyByEmail = new Map(state.keys.map((k) => [k.email, new Set(k.itemIds)]))
+  const myItemIds = state.keys.find((k) => k.email === user.email)?.itemIds ?? []
   const items = await db.aertsOItem.findMany({ orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] })
 
   return NextResponse.json({
     me: user.email,
+    myItemIds,
     released: state.released,
     forceReleased: state.forceReleased, // released early despite missing keys
     roster: state.roster,

@@ -55,6 +55,7 @@ interface CompareItem {
 }
 interface KeyState extends ReleaseInfo {
   me: string
+  myItemIds: string[]
   items: CompareItem[]
 }
 interface GameInfo {
@@ -97,6 +98,7 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
   const [rows, setRows] = useState<Row[]>([])
   const [release, setRelease] = useState<ReleaseInfo | null>(null)
   const [keyState, setKeyState] = useState<KeyState | null>(null)
+  const [savingKeyItem, setSavingKeyItem] = useState<string | null>(null)
   const [lastIds, setLastIds] = useState('')
   const [dbReady, setDbReady] = useState<boolean | null>(null)
   const [settingUp, setSettingUp] = useState(false)
@@ -159,6 +161,21 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
     const res = await fetch('/api/admin/answer-key')
     if (res.ok) setKeyState(await res.json())
   }, [])
+
+  const acceptKeyItem = async (itemId: string) => {
+    if (!keyState || keyState.myItemIds.includes(itemId)) return
+    setSavingKeyItem(itemId)
+    try {
+      const res = await fetch('/api/admin/answer-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemIds: [...keyState.myItemIds, itemId] }),
+      })
+      if (res.ok) await Promise.all([loadKeys(), loadSubs()])
+    } finally {
+      setSavingKeyItem(null)
+    }
+  }
 
   const loadGame = useCallback(async () => {
     const res = await fetch('/api/game')
@@ -716,6 +733,18 @@ export function AdminPanel({ me, openPrint }: { me: Me; openPrint: (url: string)
                                       </span>
                                     )
                                   })}
+                                  {!keyState.myItemIds.includes(it.id) && it.calledBy.some((email) => email !== keyState.me) && (
+                                    <button
+                                      type="button"
+                                      title="Add this item to your key"
+                                      aria-label={`Add ${it.text} to your answer key`}
+                                      disabled={savingKeyItem === it.id}
+                                      onClick={() => void acceptKeyItem(it.id)}
+                                      className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-emerald-500/50 text-base font-bold text-emerald-600 hover:bg-emerald-500/15 disabled:opacity-50 dark:text-emerald-400"
+                                    >
+                                      ✓
+                                    </button>
+                                  )}
                                 </span>
                               </div>
                             ))}
